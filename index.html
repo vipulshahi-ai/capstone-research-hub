@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Capstone Research Hub</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <header class="site-header">
+      <div>
+        <p class="eyebrow">SCSE CAPSTONE WORKFLOW</p>
+        <h1>Capstone Research Hub</h1>
+      </div>
+      <span class="due-chip">Literature review due 7 Oct 2026</span>
+    </header>
+
+    <main>
+      <section class="project-card" aria-labelledby="project-title">
+        <div class="project-switch"><div><p id="project-kicker" class="eyebrow"></p></div><label>Active project<select id="project-selector" aria-label="Active project"></select></label></div>
+        <h2 id="project-title">Smart Video Learning Assistant</h2>
+        <p id="project-description"></p>
+        <div class="progress-row"><span>Evidence base</span><strong id="paper-count">0 / 40 papers</strong></div>
+        <div class="progress-track"><div id="paper-progress" class="progress-fill"></div></div>
+      </section>
+
+      <section class="metrics" aria-label="Project progress">
+        <article><span>Journal papers</span><strong id="journal-count">0 / 30</strong></article>
+        <article><span>Conference papers</span><strong id="conference-count">0 / 10</strong></article>
+        <article><span>Reviewed papers</span><strong id="reviewed-count">0</strong></article>
+        <article><span>Guide interactions</span><strong id="interaction-count">0</strong></article>
+      </section>
+
+      <section class="workspace">
+        <div class="panel task-panel">
+          <div class="section-heading"><div><p class="eyebrow">CURRENT MILESTONE</p><h2>Problem identification and literature review</h2></div><span class="status status-progress">In progress</span></div>
+          <ol class="checklist" id="milestone-list"></ol>
+        </div>
+
+        <div class="panel">
+          <div class="section-heading"><div><p class="eyebrow">TEAM WORK</p><h2>Assignments</h2></div></div>
+          <div id="assignments" class="assignments"></div>
+        </div>
+      </section>
+
+      <section class="workspace">
+        <form id="paper-form" class="panel form-panel">
+          <div class="section-heading"><div><p class="eyebrow">SOURCE SCREENING</p><h2>Add a research paper</h2></div></div>
+          <p class="helper">Save only legal source links. A paper must be screened before it counts toward the 40-paper target.</p>
+          <div class="form-grid">
+            <label>Title<input name="title" required maxlength="220" /></label>
+            <label>Author and year<input name="authorYear" required placeholder="Surname et al., 2025" /></label>
+            <label>Type<select name="type" required><option value="Journal">Journal</option><option value="Conference">Conference</option></select></label>
+            <label>Owner<select name="owner" required><option>Aman</option><option>Vedant</option></select></label>
+            <label class="wide">DOI or legal source link<input name="sourceUrl" type="url" required placeholder="https://doi.org/..." /></label>
+            <label class="wide">Why is this relevant?<textarea name="relevance" required rows="3"></textarea></label>
+          </div>
+          <button type="submit">Add screened paper</button>
+          <p id="form-message" class="form-message" aria-live="polite"></p>
+        </form>
+
+        <div class="panel">
+          <div class="section-heading"><div><p class="eyebrow">GUIDE RECORD</p><h2>Latest interaction</h2></div></div>
+          <div id="latest-interaction" class="interaction-empty">No guide interaction has been recorded yet.</div>
+          <button id="interaction-button" class="secondary" type="button">Record interaction</button>
+        </div>
+      </section>
+
+      <section class="panel paper-panel">
+        <div class="section-heading"><div><p class="eyebrow">LITERATURE REVIEW</p><h2>Screened papers</h2></div><span id="sync-status" class="sync-status">Local draft mode</span></div>
+        <div class="table-wrap"><table><thead><tr><th>Paper</th><th>Type</th><th>Owner</th><th>Review</th></tr></thead><tbody id="paper-table"></tbody></table></div>
+      </section>
+    </main>
+
+    <dialog id="interaction-dialog">
+      <form id="interaction-form" method="dialog">
+        <h2>Record guide interaction</h2>
+        <label>Date<input name="date" type="date" required /></label>
+        <label>Mode<select name="mode"><option>Online</option><option>Offline</option></select></label>
+        <label>Discussion and feedback<textarea name="feedback" required rows="4"></textarea></label>
+        <label>Next action<textarea name="actionItems" required rows="3"></textarea></label>
+        <div class="dialog-actions"><button value="cancel" class="secondary">Cancel</button><button id="save-interaction" value="default">Save interaction</button></div>
+      </form>
+    </dialog>
+    <script src="config.js"></script>
+    <script src="app.js"></script>
+  </body>
+</html>
