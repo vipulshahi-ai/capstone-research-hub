@@ -62,3 +62,5 @@ document.querySelector("#interaction-form").addEventListener("submit", async eve
   try { if (await sync("addInteraction", interaction)) document.querySelector("#sync-status").textContent = "Connected to Google Sheets"; } catch (_) { document.querySelector("#sync-status").textContent = "Saved locally; sync pending"; }
 });
 render();
+
+document.querySelector("#cancel-interaction").addEventListener("click", () => { dialog.querySelector("form").reset(); dialog.close(); });
