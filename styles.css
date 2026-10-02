@@ -1,4 +1,5 @@
 :root { --ink:#172133; --muted:#5e6b7d; --surface:#fff; --line:#dbe2ea; --canvas:#f4f7fb; --navy:#11315a; --blue:#2875d1; --green:#137c5b; --amber:#b56800; }
+nav {display:flex;flex-wrap:wrap;gap:8px;margin-bottom:18px} nav button {margin-top:0} nav button[aria-current="step"] {background:var(--navy);color:white} .connect-row,.form-actions {display:flex;align-items:end;gap:12px;flex-wrap:wrap} .connect-row label {flex:1;min-width:220px} details {margin:16px 0;border-top:1px solid var(--line);padding-top:12px} summary {font-weight:bold;cursor:pointer} td {max-width:380px;min-width:110px;overflow-wrap:anywhere} td button {margin:0} button:disabled {opacity:.6;cursor:wait} #save-message,#connection-message {margin-top:12px;overflow-wrap:anywhere} .form-actions a {padding:10px} :focus-visible {outline:3px solid #2875d1;outline-offset:3px}
 * { box-sizing:border-box; }
 body { margin:0; font-family:Inter,Arial,sans-serif; color:var(--ink); background:var(--canvas); line-height:1.45; }
 .site-header, main { max-width:1160px; margin:auto; }
