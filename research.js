@@ -20,6 +20,32 @@ const dateToday=()=>new Date(Date.now()-new Date().getTimezoneOffset()*60000).to
 const draftKey=kind=>team.id+':'+kind;
 const safeURL=value=>{try{const u=new URL(value);return u.protocol==='https:'?u.href:'';}catch{return '';}};
 const link=(url,label)=>safeURL(url)?`<a href="${esc(safeURL(url))}" target="_blank" rel="noopener noreferrer">${esc(label)}</a>`:esc(label);
+function guideDecision(row){
+ const approval=String(row?.['Guide Approval']||'Pending').trim();
+ if(approval==='Approved')return {approval,tone:'approved',label:'Approved'};
+ if(approval==='Revise')return {approval,tone:'revise',label:'Revision required'};
+ return {approval:'Pending',tone:'pending',label:'Awaiting guide review'};
+}
+function guideFlag(row){
+ const decision=guideDecision(row),icon=decision.tone==='approved'?'●':decision.tone==='revise'?'●':'○';
+ return `<span class="guide-flag guide-flag-${decision.tone}"><span aria-hidden="true">${icon}</span>${esc(decision.label)}</span>`;
+}
+function guideFeedback(row){
+ const decision=guideDecision(row);
+ if(decision.tone!=='revise')return '—';
+ const feedback=String(row?.['Guide Feedback']||'Please open this review, correct the entry using the full paper, then save to resubmit it for guide review.');
+ return `<div class="guide-feedback"><strong>Guide feedback</strong><p>${esc(feedback)}</p><small>Update this entry, then save to resubmit.</small></div>`;
+}
+function showGuideNotice(row){
+ const notice=$('#guide-notice');if(!notice)return;
+ if(!row){notice.hidden=true;notice.className='';notice.innerHTML='';return;}
+ const decision=guideDecision(row);
+ const feedback=String(row['Guide Feedback']||'');
+ notice.hidden=false;notice.className=`guide-notice guide-notice-${decision.tone}`;
+ if(decision.tone==='revise')notice.innerHTML=`<strong>🔴 Revision required</strong><p>${esc(feedback||'Please correct this entry using the full paper and a stable source link.')}</p><p class="helper">Make the corrections below and choose <strong>Save to Google Sheets</strong> to resubmit this review for guide approval.</p>`;
+ else if(decision.tone==='approved')notice.innerHTML='<strong>🟢 Guide approved</strong><p>This completed review has passed the current guide check.</p>';
+ else notice.innerHTML='<strong>◌ Awaiting guide review</strong><p>Your latest saved version is awaiting the guide’s decision.</p>';
+}
 function saveDraft(kind,data){drafts[draftKey(kind)]=data;localStorage.setItem('capstone-research-drafts-v3',JSON.stringify(drafts));}
 document.querySelector('main').innerHTML=`
  <section class="project-card"><div class="project-switch"><div><p class="eyebrow">THREE TEAMS · ONE GUIDED WORKFLOW</p><h2 id="team-title"></h2></div><label>Active project<select id="team-selector">${teams.map(t=>`<option value="${t.id}">${t.id} · ${esc(t.title)}</option>`).join('')}</select></label></div>
@@ -28,8 +54,8 @@ document.querySelector('main').innerHTML=`
  <section class="metrics" id="metrics" aria-label="Confirmed shared progress"></section>
  <section class="panel" style="margin-bottom:18px"><h2>Your next steps</h2><p id="next-step"></p><div id="assignments"></div><p class="helper">Confirm the problem and screen sources → read and review → compare evidence and agree the gap. Each student targets 15 journals + 5 conferences. Quality and relevance matter; discuss any shortfall with your guide.</p></section>
  <nav id="steps" aria-label="Research steps">${Object.entries(definitions).map(([k,d])=>`<button type="button" data-step="${k}" class="secondary">${esc(d.title)}</button>`).join('')}</nav>
- <section class="panel" id="editor-panel"><h2 id="form-title"></h2><p id="form-help" class="helper"></p><form id="research-form"></form><p id="save-message" role="status"></p></section>
- <section class="panel" style="margin-top:18px"><div class="section-heading"><h2>Team research records</h2><button id="export-review" type="button" class="secondary">Export literature review CSV</button></div><p class="helper">Only confirmed Google Sheets records appear below. Open a record to edit. Guide decisions remain in the spreadsheet.</p><div id="records"></div></section>
+ <section class="panel" id="editor-panel"><h2 id="form-title"></h2><p id="form-help" class="helper"></p><div id="guide-notice" hidden></div><form id="research-form"></form><p id="save-message" role="status"></p></section>
+ <section class="panel" style="margin-top:18px"><div class="section-heading"><h2>Team research records</h2><button id="export-review" type="button" class="secondary">Export literature review CSV</button></div><p class="helper">Only confirmed Google Sheets records appear below. Red entries need revision: open the entry, correct it, then save to resubmit. Green entries are approved.</p><div id="records"></div></section>
  <section class="panel" style="margin-top:18px"><h2>University milestones</h2><p>7 Oct: problem and literature review · 14 Oct: methodology · 10 Nov: result analysis · 25 Nov: conclusion and first draft · 5 Dec: presentation, viva and TRL/submission status.</p><p class="helper">Use 15–31 October for implementation and experiments. Begin writing methods and related work while building.</p></section>`;
 const legacy=readJSON('capstone-research-hub-v2',{});
 function setMessage(id,text){$(id).textContent=text;}
@@ -42,7 +68,7 @@ function updateProgress(){
  $('#assignments').innerHTML=team.students.map(owner=>`<p><strong>${esc(owner)}</strong> · ${connected?papers.filter(p=>p.Owner===owner).length:0}/20 included papers · 15 journals + 5 conferences target</p>`).join('');
 }
 function renderForm(kind,data){
- activeKind=kind;const d=definitions[kind];data=data||drafts[draftKey(kind)]||{id:crypto.randomUUID(),revision:0,owner:team.students[0],date:dateToday()};
+ activeKind=kind;showGuideNotice(null);const d=definitions[kind];data=data||drafts[draftKey(kind)]||{id:crypto.randomUUID(),revision:0,owner:team.students[0],date:dateToday()};
  $('#form-title').textContent=d.title;$('#form-help').textContent=d.help;
  $('#research-form').innerHTML=`<input name="id" type="hidden" value="${esc(data.id||crypto.randomUUID())}"><input name="revision" type="hidden" value="${esc(data.revision||0)}"><div class="form-grid">${d.fields.map(f=>{
   const value=data[f.key]??'';let control;
@@ -68,11 +94,12 @@ function formData(){const p=Object.fromEntries(new FormData($('#research-form'))
 function openRecord(kind,row){
  const d=definitions[kind],data={id:row[d.idColumn],revision:row.Revision||0,owner:row.Owner||row.Reviewer||row['Submitted By']||team.students[0]};d.fields.forEach(f=>{data[f.key]=String(row[f.column]??'');if(f.type==='date')data[f.key]=data[f.key].slice(0,10);});
  if(kind==='paper'){data.authors=data.authors||row['Author and Year'];if(!['Screened','Rejected'].includes(data.status))data.status='Screened';}
- renderForm(kind,data);setMessage('#save-message','Editing a shared record. Guide approval: '+(row['Guide Approval']||'not applicable'));$('#editor-panel').scrollIntoView({behavior:'smooth'});
+ renderForm(kind,data);if(kind==='review')showGuideNotice(row);setMessage('#save-message',kind==='review'&&row['Guide Approval']==='Revise'?'Update the entry and save to resubmit it for guide review.':'Editing a shared record. Guide approval: '+(row['Guide Approval']||'not applicable'));$('#editor-panel').scrollIntoView({behavior:'smooth'});
 }
 function renderRecords(){
- const groups=[['problem',['Problem Statement','Research Question','Guide Approval']],['search',['Query','Search Date','Search URL']],['paper',['Paper ID','Title','Type','Owner','Screening Status','DOI or Legal Link','Drive Link']],['review',['Paper ID','Author','Year','Algorithm or Method','Dataset','Metrics','Result','Limitations','Review Status','Guide Approval']],['gap',['Synthesis','Research Gap','Proposed Contribution','Supporting Paper IDs','Guide Approval']],['interaction',['Date','Mode','Feedback','Action Items']]];
- $('#records').innerHTML=groups.map(([kind,columns])=>{const rows=shared[definitions[kind].collection];return `<details ${kind==='paper'||kind==='review'?'open':''}><summary>${esc(definitions[kind].title)} (${rows.length})</summary><div class="table-wrap"><table><thead><tr>${columns.map(c=>`<th>${esc(c)}</th>`).join('')}<th>Edit</th></tr></thead><tbody>${rows.length?rows.map((r,i)=>`<tr>${columns.map(c=>`<td>${c.includes('Link')||c==='Search URL'?link(r[c],r[c]?'Open link':'—'):esc(r[c]||'—')}</td>`).join('')}<td><button class="secondary" type="button" data-edit="${kind}" data-index="${i}">Open</button></td></tr>`).join(''):`<tr><td colspan="${columns.length+1}">No shared records yet.</td></tr>`}</tbody></table></div></details>`;}).join('');
+ const groups=[['problem',['Problem Statement','Research Question','Guide Approval']],['search',['Query','Search Date','Search URL']],['paper',['Paper ID','Title','Type','Owner','Screening Status','DOI or Legal Link','Drive Link']],['review',['Paper ID','Author','Year','Algorithm or Method','Dataset','Metrics','Result','Limitations','Review Status','Guide Approval','Guide Feedback']],['gap',['Synthesis','Research Gap','Proposed Contribution','Supporting Paper IDs','Guide Approval']],['interaction',['Date','Mode','Feedback','Action Items']]];
+ const cell=(column,row)=>{if(column==='Guide Approval')return guideFlag(row);if(column==='Guide Feedback')return guideFeedback(row);return column.includes('Link')||column==='Search URL'?link(row[column],row[column]?'Open link':'—'):esc(row[column]||'—');};
+ $('#records').innerHTML=groups.map(([kind,columns])=>{const rows=shared[definitions[kind].collection];return `<details ${kind==='paper'||kind==='review'?'open':''}><summary>${esc(definitions[kind].title)} (${rows.length})</summary><div class="table-wrap"><table><thead><tr>${columns.map(c=>`<th>${esc(c)}</th>`).join('')}<th>Action</th></tr></thead><tbody>${rows.length?rows.map((r,i)=>`<tr>${columns.map(c=>`<td>${cell(c,r)}</td>`).join('')}<td><button class="secondary" type="button" data-edit="${kind}" data-index="${i}">${kind==='review'&&r['Guide Approval']==='Revise'?'Revise &amp; resubmit':'Open'}</button></td></tr>`).join(''):`<tr><td colspan="${columns.length+1}">No shared records yet.</td></tr>`}</tbody></table></div></details>`;}).join('');
  const old=(legacy.papers||[]).filter(p=>p.projectId===team.id);
  if(old.length)$('#records').insertAdjacentHTML('beforeend',`<details><summary>Earlier browser drafts (${old.length})</summary><p>Check shared records for duplicates before submitting.</p>${old.map((p,i)=>`<p>${esc(p.title)} <button data-legacy="${i}" type="button">Review old draft</button></p>`).join('')}</details>`);
  document.querySelectorAll('[data-edit]').forEach(b=>b.onclick=()=>openRecord(b.dataset.edit,shared[definitions[b.dataset.edit].collection][Number(b.dataset.index)]));
@@ -91,7 +118,7 @@ $('#connect-form').onsubmit=async e=>{
 };
 $('#research-form').onsubmit=async e=>{
  e.preventDefault();const kind=activeKind,p=formData(),projectId=team.id;saveDraft(kind,p);setBusy(true);setMessage('#save-message','Saving and waiting for confirmation…');
- try{const r=await request(definitions[kind].action,p,projectId);shared=r.data;connected=true;p.revision=r.record.Revision;saveDraft(kind,p);updateProgress();renderRecords();renderForm(kind,p);setMessage('#save-message','Saved and confirmed in Google Sheets.');setMessage('#connection-message','Connected. Shared records are up to date.');}
+ try{const r=await request(definitions[kind].action,p,projectId);shared=r.data;connected=true;p.revision=r.record.Revision;saveDraft(kind,p);updateProgress();renderRecords();renderForm(kind,p);if(kind==='review')showGuideNotice(shared.reviews.find(row=>row['Paper ID']===p.id));setMessage('#save-message','Saved and confirmed in Google Sheets.');setMessage('#connection-message','Connected. Shared records are up to date.');}
  catch(error){setMessage('#save-message','Draft retained on this device. Save not confirmed: '+error.message);}finally{setBusy(false);}
 };
 $('#team-selector').onchange=e=>{team=teams.find(t=>t.id===e.target.value);shared=emptyData();connected=false;$('#access-code').value=sessionStorage.getItem('capstone-code:'+team.id)||'';setMessage('#connection-message','Load this team’s shared records.');setMessage('#save-message','');updateProgress();renderRecords();renderForm('problem');};
