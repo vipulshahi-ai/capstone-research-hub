@@ -125,7 +125,7 @@ $('#team-selector').onchange=e=>{team=teams.find(t=>t.id===e.target.value);share
 $('#lock-team').onclick=()=>{sessionStorage.removeItem('capstone-code:'+team.id);$('#access-code').value='';shared=emptyData();connected=false;updateProgress();renderRecords();setMessage('#connection-message','Session locked. Local form drafts remain on this device.');};
 document.querySelectorAll('[data-step]').forEach(b=>b.onclick=()=>{renderForm(b.dataset.step);setMessage('#save-message','');});
 $('#export-review').onclick=()=>{
- const columns=['Paper ID','Project ID','Author','Year','Research Task','Algorithm or Method','Dataset','Metrics','Result','Limitations','Research Gap','Reviewer','Review Status','Guide Approval'];
+ const columns=['Paper ID','Project ID','Author','Year','Research Task','Algorithm or Method','Dataset','Metrics','Result','Limitations','Research Gap','Reviewer','Review Status','Guide Approval','Guide Feedback'];
  const cell=v=>'"'+String(v??'').replace(/^[=+@-]/,"'$&").replace(/"/g,'""')+'"';
  const csv=[columns,...shared.reviews.map(r=>columns.map(c=>r[c]))].map(r=>r.map(cell).join(',')).join('\r\n'),url=URL.createObjectURL(new Blob(['\ufeff'+csv],{type:'text/csv;charset=utf-8'})),a=document.createElement('a');a.href=url;a.download=team.id+'-literature-review.csv';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
 };
