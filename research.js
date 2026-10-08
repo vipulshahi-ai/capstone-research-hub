@@ -137,8 +137,18 @@ function renderRecords(){
 }
 async function request(action,payload,projectId=team.id){
  const accessCode=sessionStorage.getItem('capstone-code:'+projectId)||'';if(!accessCode)throw new Error('Enter your team access code and load shared records first.');
- const response=await fetch(API,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({action,projectId,accessCode,payload}),signal:AbortSignal.timeout(60000)});
- const result=await response.json();if(!result.ok)throw new Error(result.error||'Could not save.');if(result.version!==3)throw new Error('Backend needs the research-workflow update.');return result;
+ for(let attempt=0;attempt<2;attempt++){
+  const response=await fetch(API,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({action,projectId,accessCode,payload}),signal:AbortSignal.timeout(60000)});
+  const body=await response.text();let result;
+  try{result=JSON.parse(body.replace(/^\uFEFF/,'').trim());}
+  catch(error){
+   if(attempt===0){await new Promise(resolve=>setTimeout(resolve,600));continue;}
+   const temporaryPage=/<(?:!doctype|html|body)\b/i.test(body);
+   throw new Error(temporaryPage?'The tracker service temporarily returned a web page instead of team data. Please wait a minute, then load shared records again.':'The tracker service returned an unreadable response. Please try loading shared records again.');
+  }
+  if(!response.ok)throw new Error(result.error||'The tracker service could not complete this request.');
+  if(!result.ok)throw new Error(result.error||'Could not save.');if(result.version!==3)throw new Error('Backend needs the research-workflow update.');return result;
+ }
 }
 function setBusy(value){busy=value;document.querySelectorAll('button,input,select,textarea').forEach(b=>b.disabled=value);}
 $('#connect-form').onsubmit=async e=>{
