@@ -30,21 +30,21 @@ function guideFlag(row){
  const decision=guideDecision(row),icon=decision.tone==='approved'?'●':decision.tone==='revise'?'●':'○';
  return `<span class="guide-flag guide-flag-${decision.tone}"><span aria-hidden="true">${icon}</span>${esc(decision.label)}</span>`;
 }
-function guideFeedback(row){
+function guideFeedback(row,recordLabel='review'){
  const decision=guideDecision(row);
  if(decision.tone!=='revise')return '—';
- const feedback=String(row?.['Guide Feedback']||'Please open this review, correct the entry using the full paper, then save to resubmit it for guide review.');
- return `<div class="guide-feedback"><strong>Guide feedback</strong><p>${esc(feedback)}</p><small>Update this entry, then save to resubmit.</small></div>`;
+ const feedback=String(row?.['Guide Feedback']||`Please open this ${recordLabel}, make the requested corrections, then save to resubmit it for guide review.`);
+ return `<div class="guide-feedback"><strong>Guide feedback</strong><p>${esc(feedback)}</p><small>Update this ${recordLabel}, then save to resubmit.</small></div>`;
 }
-function showGuideNotice(row){
+function showGuideNotice(row,recordLabel='review'){
  const notice=$('#guide-notice');if(!notice)return;
  if(!row){notice.hidden=true;notice.className='';notice.innerHTML='';return;}
  const decision=guideDecision(row);
  const feedback=String(row['Guide Feedback']||'');
  notice.hidden=false;notice.className=`guide-notice guide-notice-${decision.tone}`;
- if(decision.tone==='revise')notice.innerHTML=`<strong>🔴 Revision required</strong><p>${esc(feedback||'Please correct this entry using the full paper and a stable source link.')}</p><p class="helper">Make the corrections below and choose <strong>Save to Google Sheets</strong> to resubmit this review for guide approval.</p>`;
- else if(decision.tone==='approved')notice.innerHTML='<strong>🟢 Guide approved</strong><p>This completed review has passed the current guide check.</p>';
- else notice.innerHTML='<strong>◌ Awaiting guide review</strong><p>Your latest saved version is awaiting the guide’s decision.</p>';
+ if(decision.tone==='revise')notice.innerHTML=`<strong>🔴 Revision required</strong><p>${esc(feedback||`Please correct this ${recordLabel} before resubmitting it for guide approval.`)}</p><p class="helper">Make the corrections below and choose <strong>Save to Google Sheets</strong> to resubmit this ${recordLabel} for guide approval.</p>`;
+ else if(decision.tone==='approved')notice.innerHTML=`<strong>🟢 Guide approved</strong><p>This ${recordLabel} has passed the current guide check.</p>`;
+ else notice.innerHTML=`<strong>◌ Awaiting guide review</strong><p>Your latest saved ${recordLabel} is awaiting the guide’s decision.</p>`;
 }
 function saveDraft(kind,data){drafts[draftKey(kind)]=data;localStorage.setItem('capstone-research-drafts-v3',JSON.stringify(drafts));}
 document.querySelector('main').innerHTML=`
@@ -94,7 +94,18 @@ function formData(){const p=Object.fromEntries(new FormData($('#research-form'))
 function openRecord(kind,row){
  const d=definitions[kind],data={id:row[d.idColumn],revision:row.Revision||0,owner:row.Owner||row.Reviewer||row['Submitted By']||team.students[0]};d.fields.forEach(f=>{data[f.key]=String(row[f.column]??'');if(f.type==='date')data[f.key]=data[f.key].slice(0,10);});
  if(kind==='paper'){data.authors=data.authors||row['Author and Year'];if(!['Screened','Rejected'].includes(data.status))data.status='Screened';}
- renderForm(kind,data);if(kind==='review')showGuideNotice(row);setMessage('#save-message',kind==='review'&&row['Guide Approval']==='Revise'?'Update the entry and save to resubmit it for guide review.':'Editing a shared record. Guide approval: '+(row['Guide Approval']||'not applicable'));$('#editor-panel').scrollIntoView({behavior:'smooth'});
+ const isGuided=kind==='review'||kind==='problem',recordLabel=kind==='problem'?'problem statement':'review';
+ renderForm(kind,data);if(isGuided)showGuideNotice(row,recordLabel);setMessage('#save-message',isGuided&&row['Guide Approval']==='Revise'?`Update the ${recordLabel} and save to resubmit it for guide review.`:'Editing a shared record. Guide approval: '+(row['Guide Approval']||'not applicable'));$('#editor-panel').scrollIntoView({behavior:'smooth'});
+}
+function previewText(value,limit=175){const text=String(value??'').replace(/\s+/g,' ').trim();return text.length>limit?text.slice(0,limit-1).trimEnd()+'…':text||'Problem statement not recorded';}
+function displayDate(value){const date=new Date(value);return Number.isNaN(date.valueOf())?'':date.toLocaleDateString('en-IN',{day:'numeric',month:'short',year:'numeric'});}
+function problemCard(row,index){
+ const decision=guideDecision(row),owner=row.Owner||'Team member',updated=displayDate(row['Updated At']);
+ const fields=[
+  ['Problem statement',row['Problem Statement']],['Who faces this problem, and why?',row.Motivation],['Research question',row['Research Question']],['Measurable objectives',row.Objectives],['Scope and exclusions',row.Scope]
+ ];
+ const drive=row['Drive Folder']?link(row['Drive Folder'],'Open team Drive folder'):'';
+ return `<details class="review-card problem-card review-card-${decision.tone}"><summary><span class="review-title"><strong>${esc(previewText(row['Research Question']||row['Problem Statement']))}</strong><small>${esc(owner)} · Problem statement${updated?` · updated ${esc(updated)}`:''}</small></span><span class="review-summary-tags"><span class="review-chip review-chip-problem">Problem statement</span>${guideFlag(row)}</span></summary><div class="review-card-body"><div class="review-card-meta"><span>Submitted by: ${esc(owner)}</span>${updated?`<span>Last updated: ${esc(updated)}</span>`:''}${drive?`<span>${drive}</span>`:''}</div><div class="review-detail-grid">${fields.map(([label,value])=>`<section><h4>${esc(label)}</h4><p>${esc(value||'Not recorded yet.')}</p></section>`).join('')}</div>${decision.tone==='revise'?guideFeedback(row,'problem statement'):''}<div class="review-card-actions"><button class="secondary" type="button" data-edit="problem" data-index="${index}">${decision.tone==='revise'?'Revise &amp; resubmit':'Open problem statement'}</button></div></div></details>`;
 }
 function reviewCard(row,index){
  const paper=shared.papers.find(item=>item['Paper ID']===row['Paper ID'])||{},decision=guideDecision(row);
@@ -110,7 +121,7 @@ function reviewCard(row,index){
 function renderRecords(){
  const groups=[['problem',['Problem Statement','Research Question','Guide Approval']],['search',['Query','Search Date','Search URL']],['paper',['Paper ID','Title','Type','Owner','Screening Status','DOI or Legal Link','Drive Link']],['review',['Paper ID','Author','Year','Algorithm or Method','Dataset','Metrics','Result','Limitations','Review Status','Guide Approval','Guide Feedback']],['gap',['Synthesis','Research Gap','Proposed Contribution','Supporting Paper IDs','Guide Approval']],['interaction',['Date','Mode','Feedback','Action Items']]];
  const cell=(column,row)=>{if(column==='Guide Approval')return guideFlag(row);if(column==='Guide Feedback')return guideFeedback(row);return column.includes('Link')||column==='Search URL'?link(row[column],row[column]?'Open link':'—'):esc(row[column]||'—');};
- $('#records').innerHTML=groups.map(([kind,columns])=>{const rows=shared[definitions[kind].collection];if(kind==='review')return `<details open><summary>${esc(definitions[kind].title)} (${rows.length})</summary><p class="helper review-list-help">Select a paper to view its full evidence. Green is approved, red needs revision, and yellow is awaiting review or still being read.</p><div class="review-list">${rows.length?rows.map(reviewCard).join(''):'<p>No shared records yet.</p>'}</div></details>`;return `<details ${kind==='paper'?'open':''}><summary>${esc(definitions[kind].title)} (${rows.length})</summary><div class="table-wrap"><table><thead><tr>${columns.map(c=>`<th>${esc(c)}</th>`).join('')}<th>Action</th></tr></thead><tbody>${rows.length?rows.map((r,i)=>`<tr>${columns.map(c=>`<td>${cell(c,r)}</td>`).join('')}<td><button class="secondary" type="button" data-edit="${kind}" data-index="${i}">${kind==='review'&&r['Guide Approval']==='Revise'?'Revise &amp; resubmit':'Open'}</button></td></tr>`).join(''):`<tr><td colspan="${columns.length+1}">No shared records yet.</td></tr>`}</tbody></table></div></details>`;}).join('');
+ $('#records').innerHTML=groups.map(([kind,columns])=>{const rows=shared[definitions[kind].collection];if(kind==='problem')return `<details open><summary>${esc(definitions[kind].title)} (${rows.length})</summary><p class="helper review-list-help">Open each problem statement to read its full scope and guide decision. Green is approved, red needs revision, and yellow is awaiting review.</p><div class="review-list">${rows.length?rows.map(problemCard).join(''):'<p>No shared records yet.</p>'}</div></details>`;if(kind==='review')return `<details open><summary>${esc(definitions[kind].title)} (${rows.length})</summary><p class="helper review-list-help">Select a paper to view its full evidence. Green is approved, red needs revision, and yellow is awaiting review or still being read.</p><div class="review-list">${rows.length?rows.map(reviewCard).join(''):'<p>No shared records yet.</p>'}</div></details>`;return `<details ${kind==='paper'?'open':''}><summary>${esc(definitions[kind].title)} (${rows.length})</summary><div class="table-wrap"><table><thead><tr>${columns.map(c=>`<th>${esc(c)}</th>`).join('')}<th>Action</th></tr></thead><tbody>${rows.length?rows.map((r,i)=>`<tr>${columns.map(c=>`<td>${cell(c,r)}</td>`).join('')}<td><button class="secondary" type="button" data-edit="${kind}" data-index="${i}">${kind==='review'&&r['Guide Approval']==='Revise'?'Revise &amp; resubmit':'Open'}</button></td></tr>`).join(''):`<tr><td colspan="${columns.length+1}">No shared records yet.</td></tr>`}</tbody></table></div></details>`;}).join('');
  const old=(legacy.papers||[]).filter(p=>p.projectId===team.id);
  if(old.length)$('#records').insertAdjacentHTML('beforeend',`<details><summary>Earlier browser drafts (${old.length})</summary><p>Check shared records for duplicates before submitting.</p>${old.map((p,i)=>`<p>${esc(p.title)} <button data-legacy="${i}" type="button">Review old draft</button></p>`).join('')}</details>`);
  document.querySelectorAll('[data-edit]').forEach(b=>b.onclick=()=>openRecord(b.dataset.edit,shared[definitions[b.dataset.edit].collection][Number(b.dataset.index)]));
@@ -129,7 +140,7 @@ $('#connect-form').onsubmit=async e=>{
 };
 $('#research-form').onsubmit=async e=>{
  e.preventDefault();const kind=activeKind,p=formData(),projectId=team.id;saveDraft(kind,p);setBusy(true);setMessage('#save-message','Saving and waiting for confirmation…');
- try{const r=await request(definitions[kind].action,p,projectId);shared=r.data;connected=true;p.revision=r.record.Revision;saveDraft(kind,p);updateProgress();renderRecords();renderForm(kind,p);if(kind==='review')showGuideNotice(shared.reviews.find(row=>row['Paper ID']===p.id));setMessage('#save-message','Saved and confirmed in Google Sheets.');setMessage('#connection-message','Connected. Shared records are up to date.');}
+ try{const r=await request(definitions[kind].action,p,projectId);shared=r.data;connected=true;p.revision=r.record.Revision;saveDraft(kind,p);updateProgress();renderRecords();renderForm(kind,p);if(kind==='review'||kind==='problem'){const collection=shared[definitions[kind].collection],idColumn=definitions[kind].idColumn,record=collection.find(row=>row[idColumn]===p.id);showGuideNotice(record,kind==='problem'?'problem statement':'review');}setMessage('#save-message','Saved and confirmed in Google Sheets.');setMessage('#connection-message','Connected. Shared records are up to date.');}
  catch(error){setMessage('#save-message','Draft retained on this device. Save not confirmed: '+error.message);}finally{setBusy(false);}
 };
 $('#team-selector').onchange=e=>{team=teams.find(t=>t.id===e.target.value);shared=emptyData();connected=false;$('#access-code').value=sessionStorage.getItem('capstone-code:'+team.id)||'';setMessage('#connection-message','Load this team’s shared records.');setMessage('#save-message','');updateProgress();renderRecords();renderForm('problem');};
