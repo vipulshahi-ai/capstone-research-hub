@@ -59,8 +59,9 @@ function requireFields(p,fields){
  Object.keys(p).forEach(k=>{if(String(p[k]).length>15000)throw new Error('Field too long: '+k);});
 }
 function requireUrl(value,drive){
- if(!/^https:\/\/[^\s]+$/i.test(value))throw new Error('Use a valid HTTPS link.');
- if(drive&&!/^https:\/\/drive\.google\.com\//i.test(value))throw new Error('Use a Google Drive link.');
+ const text=String(value||'');
+ if(!text.startsWith('https://')||text.includes(' '))throw new Error('Use a valid HTTPS link.');
+ if(drive&&!text.startsWith('https://drive.google.com/'))throw new Error('Use a Google Drive link.');
 }
 function authorize(r){
  const id=String(r.projectId||''),expected=PropertiesService.getScriptProperties().getProperty('TEAM_'+id);
@@ -91,15 +92,15 @@ function saveRecord(projectId,action,p){
   name='Research Problems';key='Record ID';
   row={'Record ID':p.id,'Problem Statement':p.statement,'Motivation':p.motivation,'Research Question':p.question,'Objectives':p.objectives,'Scope':p.scope,'Drive Folder':p.driveFolder||'','Owner':p.owner,'Guide Approval':'Pending','Updated At':now};
  }else if(action==='saveSearch'){
-  requireFields(p,['query','date']);if(!/^\d{4}-\d{2}-\d{2}$/.test(p.date))throw new Error('Use a search date.');
+  requireFields(p,['query','date']);if(!/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/.test(p.date))throw new Error('Use a search date.');
   name='Search Log';key='Record ID';row={'Record ID':p.id,'Query':p.query,'Search Date':p.date,'Search URL':'https://scholar.google.com/scholar?q='+encodeURIComponent(p.query),'Notes':p.notes||'','Owner':p.owner,'Updated At':now};
  }else if(action==='savePaper'){
   requireFields(p,['title','authors','year','type','venue','sourceUrl','relevance','screeningNotes']);
   if(!['Journal','Conference'].includes(p.type))throw new Error('Choose Journal or Conference.');
-  if(!/^\d{4}$/.test(p.year)||+p.year<1900||+p.year>new Date().getFullYear()+1)throw new Error('Enter a valid publication year.');
+  if(!/^[0-9]{4}$/.test(p.year)||+p.year<1900||+p.year>new Date().getFullYear()+1)throw new Error('Enter a valid publication year.');
   if(!['Screened','Rejected'].includes(p.status))throw new Error('Choose include or exclude.');
   requireUrl(p.sourceUrl);if(p.driveUrl)requireUrl(p.driveUrl,true);
-  const canonical=v=>String(v).toLowerCase().trim().replace(/^https?:\/\/(dx\.)?doi.org\//,'').replace(/\/$/,'');
+  const canonical=v=>{let value=String(v).toLowerCase().trim();['https://doi.org/','http://doi.org/','https://dx.doi.org/','http://dx.doi.org/'].forEach(prefix=>{if(value.startsWith(prefix))value=value.slice(prefix.length);});return value.endsWith('/')?value.slice(0,-1):value;};
   const duplicate=selectProject('Papers',projectId).find(r=>r['Paper ID']!==p.id&&(canonical(r.Title)===canonical(p.title)||canonical(r['DOI or Legal Link'])===canonical(p.sourceUrl)));
   if(duplicate)throw new Error('This paper is already recorded as '+duplicate['Paper ID']+'. Open it to edit.');
   name='Papers';key='Paper ID';row={'Paper ID':p.id,'Title':p.title,'Author and Year':p.authors+', '+p.year,'Authors':p.authors,'Year':p.year,'Type':p.type,'Venue':p.venue,'Owner':p.owner,'DOI or Legal Link':p.sourceUrl,'Relevance Rationale':p.relevance,'Screening Status':p.status,'Submitted By':p.owner,'Submitted At':now,'Drive Link':p.driveUrl||'','Screening Notes':p.screeningNotes};
