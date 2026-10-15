@@ -19,7 +19,7 @@ Each team targets 30 journal and 10 conference papers. Each student targets 15 j
 - Research Problems, Search Log and Research Gaps contain the new form records.
 - Interactions retains the existing guide-meeting records.
 - Portal Audit records successful mutations with record ID, owner, timestamp and revision.
-- Existing team views remain; portal tables are filtered by the authorized project on the server.
+- Existing team views remain; portal records are filtered by the authorized project on the server and displayed as expandable cards.
 - Shared data is loaded into memory; form drafts are saved locally. Old v2 browser records are preserved and paper drafts can be opened for manual migration.
 
 Saving waits for a readable successful server response. A timeout/error retains the draft and does not claim success. Retrying identical content is idempotent; stale edits are rejected rather than overwriting newer team work. Reload shared records and open the latest record to resolve a conflict. The portal shows guide approval status and feedback for returned problem-statement, literature-review, and research-gap entries. Students open a red entry, correct it, and save to resubmit; student changes reset approval to Pending. The guide continues to approve or return entries from the restricted spreadsheet.
