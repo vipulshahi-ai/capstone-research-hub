@@ -51,3 +51,22 @@ for (const teamId of ['SoAI-092', 'LA7187', 'SoAI-424']) {
 }
 
 console.log('Expandable record views passed for all three teams.');
+
+{
+  const { context, element } = loadPortal();
+  context.testData = {
+    problems: [], searches: [], papers: [], reviews: [], gaps: [], interactions: [],
+    methodologies: [
+      { 'Record ID': 'draft-1', 'Method Scope': 'Student draft', Owner: 'Aman Kaushal', 'Guide Approval': 'Approved' },
+      { 'Record ID': 'final-1', 'Method Scope': 'Agreed team method', Owner: 'Vedant Kasaudhan', 'Submission Type': 'Final Team Version', 'Team Contributors': 'Aman Kaushal, Vedant Kasaudhan', 'Source Draft IDs': 'draft-1, draft-2', 'Guide Approval': 'Approved', 'Final Team Approval': 'Pending' },
+    ],
+  };
+  vm.runInContext('shared = testData; connected = true; renderRecords(); updateProgress();', context);
+  assert.match(element('#records').innerHTML, /Final team version/);
+  assert.match(element('#records').innerHTML, /Awaiting guide review/);
+  assert.match(element('#metrics').innerHTML, /Final team version awaiting guide/);
+  context.testData.methodologies[1]['Final Team Approval'] = 'Approved';
+  vm.runInContext('renderRecords(); updateProgress();', context);
+  assert.match(element('#records').innerHTML, /This is the approved method for team implementation/);
+  assert.match(element('#metrics').innerHTML, /Final team version approved/);
+}

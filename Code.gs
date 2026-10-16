@@ -5,7 +5,7 @@ const SCHEMAS = {
  'Research Problems':['Record ID','Project ID','Problem Statement','Motivation','Research Question','Objectives','Scope','Drive Folder','Owner','Guide Approval','Updated At','Revision'],
  'Search Log':['Record ID','Project ID','Query','Search Date','Search URL','Notes','Owner','Updated At','Revision'],
  'Research Gaps':['Record ID','Project ID','Synthesis','Research Gap','Proposed Contribution','Supporting Paper IDs','Owner','Guide Approval','Updated At','Revision'],
- 'Methodology':['Record ID','Project ID','Method Scope','System Workflow','Data and Permission Record','Proposed Method','Baseline Methods','Evaluation Plan','Metrics and Success Criteria','Experiment Protocol','Reproducibility and Environment','Contribution Claim','Evidence Folder','Owner','Guide Approval','Guide Feedback','Updated At','Revision'],
+ 'Methodology':['Record ID','Project ID','Method Scope','System Workflow','Data and Permission Record','Proposed Method','Baseline Methods','Evaluation Plan','Metrics and Success Criteria','Experiment Protocol','Reproducibility and Environment','Contribution Claim','Evidence Folder','Owner','Guide Approval','Guide Feedback','Updated At','Revision','Submission Type','Team Contributors','Source Draft IDs','Final Team Approval','First Submitted At','Comparison Notes'],
  Interactions:['Interaction ID','Project ID','Date','Mode','Participants','Feedback','Action Items','Completion Status','Recorded At','Revision'],
  'Portal Audit':['Timestamp','Project ID','Action','Record ID','Owner','Revision'],
  'Portal Access':['Project ID','Team Access Code','Instructions']
@@ -118,14 +118,29 @@ function saveRecord(projectId,action,p){
  }else if(action==='saveMethodology'){
   requireFields(p,['scope','workflow','dataRecord','method','baselines','evaluation','metrics','protocol','reproducibility','contribution','evidenceFolder']);
   requireUrl(p.evidenceFolder,true);
-  name='Methodology';key='Record ID';row={'Record ID':p.id,'Method Scope':p.scope,'System Workflow':p.workflow,'Data and Permission Record':p.dataRecord,'Proposed Method':p.method,'Baseline Methods':p.baselines,'Evaluation Plan':p.evaluation,'Metrics and Success Criteria':p.metrics,'Experiment Protocol':p.protocol,'Reproducibility and Environment':p.reproducibility,'Contribution Claim':p.contribution,'Evidence Folder':p.evidenceFolder,'Owner':p.owner,'Guide Approval':'Pending','Updated At':now};
+  const submissionType=p.submissionType||'Individual Draft';
+  if(!['Individual Draft','Final Team Version'].includes(submissionType))throw new Error('Choose an individual draft or final team version.');
+  const existingMethods=selectProject('Methodology',projectId);
+  const existingMethod=existingMethods.find(r=>String(r['Record ID'])===p.id);
+  if(existingMethod&&(existingMethod['Submission Type']||'Individual Draft')!==submissionType)throw new Error('A saved draft cannot change type. Create a new record for the final team version.');
+  if(submissionType==='Final Team Version'&&existingMethod&&existingMethod['Final Team Approval']==='Approved')throw new Error('The final team methodology is approved. Ask the guide before changing it.');
+  let contributors='',sourceDraftIds='',finalApproval='';
+  if(submissionType==='Final Team Version'){
+   requireFields(p,['comparison']);
+   const teammates=records('Students').filter(r=>r['Project ID']===projectId&&r.Role==='Student').map(r=>r.Name);
+   const approved=teammates.map(student=>existingMethods.filter(r=>r.Owner===student&&(r['Submission Type']||'Individual Draft')==='Individual Draft'&&r['Guide Approval']==='Approved').sort((a,b)=>String(b['Updated At']).localeCompare(String(a['Updated At'])))[0]);
+   if(teammates.length<2||approved.some(r=>!r))throw new Error('Each team member needs an approved individual methodology draft before the final team version.');
+   if(existingMethods.some(r=>r['Submission Type']==='Final Team Version'&&String(r['Record ID'])!==p.id))throw new Error('A final team record already exists. Open and revise that record instead of creating another.');
+   contributors=teammates.join(', ');sourceDraftIds=approved.map(r=>r['Record ID']).join(', ');finalApproval='Pending';
+  }
+  name='Methodology';key='Record ID';row={'Record ID':p.id,'Method Scope':p.scope,'System Workflow':p.workflow,'Data and Permission Record':p.dataRecord,'Proposed Method':p.method,'Baseline Methods':p.baselines,'Evaluation Plan':p.evaluation,'Metrics and Success Criteria':p.metrics,'Experiment Protocol':p.protocol,'Reproducibility and Environment':p.reproducibility,'Contribution Claim':p.contribution,'Evidence Folder':p.evidenceFolder,'Owner':p.owner,'Guide Approval':submissionType==='Individual Draft'?'Pending':'','Submission Type':submissionType,'Team Contributors':contributors,'Source Draft IDs':sourceDraftIds,'Final Team Approval':finalApproval,'First Submitted At':existingMethod&&existingMethod['First Submitted At']||now,'Comparison Notes':submissionType==='Final Team Version'?p.comparison:'','Updated At':now};
  }else if(action==='addInteraction'){
   requireFields(p,['date','mode','feedback','actionItems']);if(!['Online','Offline'].includes(p.mode))throw new Error('Choose Online or Offline.');
   name='Interactions';key='Interaction ID';row={'Interaction ID':p.id,'Date':p.date,'Mode':p.mode,'Participants':records('Students').filter(r=>r['Project ID']===projectId).map(r=>r.Name).join(', '),'Feedback':p.feedback,'Action Items':p.actionItems,'Completion Status':'Pending','Recorded At':now};
  }else throw new Error('Unsupported action. Refresh the portal.');
  const previous=records(name).find(r=>String(r[key])===p.id);
  if(previous&&previous['Project ID']!==projectId)throw new Error('Record belongs to another team.');
- const revision=Number(previous&&previous.Revision||0),volatile=['Submitted At','Updated At','Recorded At','Guide Approval','Guide Feedback'];
+ const revision=Number(previous&&previous.Revision||0),volatile=['Submitted At','Updated At','Recorded At','Guide Approval','Guide Feedback','Final Team Approval','First Submitted At'];
  if(previous&&Object.keys(row).filter(k=>!volatile.includes(k)).every(k=>String(previous[k]||'')===String(row[k]||'')))return previous;
  if(revision!==Number(p.revision||0))throw new Error('A teammate changed this record. Reload shared records and open the latest version. Your draft remains on this device.');
  row['Project ID']=projectId;row.Revision=revision+1;put(name,key,p.id,row);
