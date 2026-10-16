@@ -15,7 +15,7 @@ const $=s=>document.querySelector(s),esc=v=>String(v??'').replace(/[&<>"']/g,c=>
 function readJSON(key,fallback){try{return JSON.parse(localStorage.getItem(key))||fallback;}catch{return fallback;}}
 let team=teams.find(t=>t.id===readJSON('capstone-research-hub-v2',{}).activeProjectId)||teams[0];
 const emptyData=()=>({papers:[],reviews:[],problems:[],searches:[],gaps:[],methodologies:[],interactions:[]});
-let shared=emptyData(),connected=false,busy=false,activeKind='problem';
+let shared=emptyData(),connected=false,busy=false,activeKind='problem',guideView=false,guideAccessCode='';
 let drafts=readJSON('capstone-research-drafts-v3',{});
 const dateToday=()=>new Date(Date.now()-new Date().getTimezoneOffset()*60000).toISOString().slice(0,10);
 const draftKey=kind=>team.id+':'+kind;
@@ -65,7 +65,7 @@ function saveDraft(kind,data){drafts[draftKey(kind)]=data;localStorage.setItem('
 document.querySelector('main').innerHTML=`
  <section class="project-card"><div class="project-switch"><div><p class="eyebrow">THREE TEAMS · ONE GUIDED WORKFLOW</p><h2 id="team-title"></h2></div><label>Active project<select id="team-selector">${teams.map(t=>`<option value="${t.id}">${t.id} · ${esc(t.title)}</option>`).join('')}</select></label></div>
  <p>The methodology milestone was 14 October 2026. Complete one agreed final team version now; the results-analysis deadline is 10 November 2026.</p>
- <form id="connect-form" class="connect-row"><label>Team access code<input id="access-code" type="password" autocomplete="off" required placeholder="Ask your guide for your team code"></label><button>Load shared records</button><button id="lock-team" type="button" class="secondary">Lock session</button></form><p id="connection-message" role="status">Enter your team code to load and save shared records. Form drafts stay on this device.</p></section>
+ <form id="connect-form" class="connect-row"><label>Team access code or guide key<input id="access-code" type="password" autocomplete="off" required placeholder="Enter your team code or guide key"></label><button>Load shared records</button><button id="lock-team" type="button" class="secondary">Lock session</button></form><p id="connection-message" role="status">A team code can load and save its records. The guide key opens a read-only view of any team. Form drafts stay on this device.</p></section>
  <section class="metrics" id="metrics" aria-label="Confirmed shared progress"></section>
  <section class="panel" style="margin-bottom:18px"><h2>Your next steps</h2><p id="next-step"></p><div id="assignments"></div><p class="helper">Confirm the problem and screen sources → read and review → compare evidence and agree the gap. Each student targets 15 journals + 5 conferences. Quality and relevance matter; discuss any shortfall with your guide.</p></section>
  <nav id="steps" aria-label="Research steps">${Object.entries(definitions).map(([k,d])=>`<button type="button" data-step="${k}" class="secondary">${esc(d.title)}</button>`).join('')}</nav>
@@ -196,8 +196,9 @@ function renderRecords(){
  document.querySelectorAll('[data-edit]').forEach(b=>b.onclick=()=>openRecord(b.dataset.edit,shared[definitions[b.dataset.edit].collection][Number(b.dataset.index)]));
  document.querySelectorAll('[data-legacy]').forEach(b=>b.onclick=()=>{const p=old[Number(b.dataset.legacy)];renderForm('paper',{...p,id:crypto.randomUUID(),authors:p.authorYear,status:'Screened',revision:0});});
 }
-async function request(action,payload,projectId=team.id){
- const accessCode=sessionStorage.getItem('capstone-code:'+projectId)||'';if(!accessCode)throw new Error('Enter your team access code and load shared records first.');
+function setGuideView(enabled){guideView=enabled;document.body.classList.toggle('guide-view',enabled);}
+async function request(action,payload,projectId=team.id,codeOverride=''){
+ const accessCode=codeOverride||(guideView?guideAccessCode:sessionStorage.getItem('capstone-code:'+projectId))||'';if(!accessCode)throw new Error('Enter your team access code or guide key and load shared records first.');
  for(let attempt=0;attempt<2;attempt++){
   const response=await fetch(API,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({action,projectId,accessCode,payload}),signal:AbortSignal.timeout(60000)});
   const body=await response.text();let result;
@@ -213,19 +214,19 @@ async function request(action,payload,projectId=team.id){
 }
 function setBusy(value){busy=value;document.querySelectorAll('button,input,select,textarea').forEach(b=>b.disabled=value);}
 $('#connect-form').onsubmit=async e=>{
- e.preventDefault();sessionStorage.setItem('capstone-code:'+team.id,$('#access-code').value.trim());setBusy(true);setMessage('#connection-message','Loading shared team records…');
- try{const r=await request('loadProject');shared=r.data;connected=true;updateProgress();renderRecords();renderForm(activeKind);setMessage('#connection-message','Connected. Displaying confirmed records from Google Sheets.');}
- catch(error){connected=false;updateProgress();setMessage('#connection-message',error.message);}finally{setBusy(false);}
+ e.preventDefault();const enteredCode=$('#access-code').value.trim();setBusy(true);setMessage('#connection-message','Loading shared team records…');
+ try{const r=await request('loadProject',null,team.id,enteredCode);setGuideView(!!r.readOnly);guideAccessCode=r.readOnly?enteredCode:'';if(r.readOnly)$('#access-code').value='';else sessionStorage.setItem('capstone-code:'+team.id,enteredCode);shared=r.data;connected=true;updateProgress();renderRecords();renderForm(activeKind);setMessage('#connection-message',r.readOnly?'Guide view · read-only. Select another project to inspect its records.':'Connected. Displaying confirmed records from Google Sheets.');}
+ catch(error){connected=false;setGuideView(false);guideAccessCode='';updateProgress();setMessage('#connection-message',error.message);}finally{setBusy(false);}
 };
 $('#research-form').onsubmit=async e=>{
- e.preventDefault();const kind=activeKind,p=formData(),projectId=team.id;saveDraft(kind,p);
+ e.preventDefault();if(guideView){setMessage('#save-message','Guide view is read-only. Use the tracker for approval and feedback.');return;}const kind=activeKind,p=formData(),projectId=team.id;saveDraft(kind,p);
  if(kind==='methodology'&&p.submissionType==='Final Team Version'&&!String(p.comparison||'').trim()){setMessage('#save-message','Explain what was kept or changed from both individual drafts before submitting the final team version.');return;}
  setBusy(true);setMessage('#save-message','Saving and waiting for confirmation…');
  try{const r=await request(definitions[kind].action,p,projectId);shared=r.data;connected=true;p.revision=r.record.Revision;saveDraft(kind,p);updateProgress();renderRecords();renderForm(kind,p);if(['review','problem','gap','methodology'].includes(kind)){const collection=shared[definitions[kind].collection],idColumn=definitions[kind].idColumn,record=collection.find(row=>row[idColumn]===p.id);showGuideNotice(record,guideRecordLabel(kind));}setMessage('#save-message','Saved and confirmed in Google Sheets.');setMessage('#connection-message','Connected. Shared records are up to date.');}
  catch(error){setMessage('#save-message','Draft retained on this device. Save not confirmed: '+error.message);}finally{setBusy(false);}
 };
-$('#team-selector').onchange=e=>{team=teams.find(t=>t.id===e.target.value);shared=emptyData();connected=false;$('#access-code').value=sessionStorage.getItem('capstone-code:'+team.id)||'';setMessage('#connection-message','Load this team’s shared records.');setMessage('#save-message','');updateProgress();renderRecords();renderForm('problem');};
-$('#lock-team').onclick=()=>{sessionStorage.removeItem('capstone-code:'+team.id);$('#access-code').value='';shared=emptyData();connected=false;updateProgress();renderRecords();setMessage('#connection-message','Session locked. Local form drafts remain on this device.');};
+$('#team-selector').onchange=async e=>{team=teams.find(t=>t.id===e.target.value);shared=emptyData();connected=false;setMessage('#save-message','');updateProgress();renderRecords();renderForm('problem');if(guideView&&guideAccessCode){setBusy(true);setMessage('#connection-message','Loading guide view…');try{const r=await request('loadProject');shared=r.data;connected=true;updateProgress();renderRecords();setMessage('#connection-message','Guide view · read-only. Select another project to inspect its records.');}catch(error){setMessage('#connection-message',error.message);}finally{setBusy(false);}}else{$('#access-code').value=sessionStorage.getItem('capstone-code:'+team.id)||'';setMessage('#connection-message','Load this team’s shared records.');}};
+$('#lock-team').onclick=()=>{if(!guideView)sessionStorage.removeItem('capstone-code:'+team.id);guideAccessCode='';setGuideView(false);$('#access-code').value='';shared=emptyData();connected=false;updateProgress();renderRecords();setMessage('#connection-message','Session locked. Local form drafts remain on this device.');};
 document.querySelectorAll('[data-step]').forEach(b=>b.onclick=()=>{renderForm(b.dataset.step);setMessage('#save-message','');});
 $('#export-review').onclick=()=>{
  const columns=['Paper ID','Project ID','Author','Year','Research Task','Algorithm or Method','Dataset','Metrics','Result','Limitations','Research Gap','Reviewer','Review Status','Guide Approval','Guide Feedback'];

@@ -64,9 +64,12 @@ function requireUrl(value,drive){
  if(drive&&!text.startsWith('https://drive.google.com/'))throw new Error('Use a Google Drive link.');
 }
 function authorize(r){
- const id=String(r.projectId||''),expected=PropertiesService.getScriptProperties().getProperty('TEAM_'+id);
- if(!expected||String(r.accessCode||'')!==expected)throw new Error('Enter the access code supplied by your guide for this team.');
- return id;
+ const id=String(r.projectId||''),props=PropertiesService.getScriptProperties(),expected=props.getProperty('TEAM_'+id),code=String(r.accessCode||'');
+ if(!expected)throw new Error('Choose a valid project.');
+ if(code===expected)return {projectId:id,readOnly:false};
+ const guideCode=props.getProperty('GUIDE_READ_CODE');
+ if(guideCode&&code===guideCode)return {projectId:id,readOnly:true};
+ throw new Error('Enter the access code supplied by your guide for this team.');
 }
 function ownerAllowed(id,owner){if(!records('Students').some(r=>r['Project ID']===id&&r.Role==='Student'&&r.Name===owner))throw new Error('Select a student from this team.');}
 function selectProject(name,id){return records(name).filter(r=>r['Project ID']===id);}
@@ -75,9 +78,10 @@ function doGet(){return jsonResponse({ok:true,version:3,message:'My Capstone Gui
 function doPost(e){
  const lock=LockService.getScriptLock();
  try{
-  const r=JSON.parse(e.postData.contents),id=authorize(r);
+  const r=JSON.parse(e.postData.contents),access=authorize(r),id=access.projectId;
   if(!lock.tryLock(25000))throw new Error('Tracker busy. Retry shortly.');
-  if(r.action==='loadProject')return jsonResponse({ok:true,version:3,data:loadProject(id)});
+  if(r.action==='loadProject')return jsonResponse({ok:true,version:3,readOnly:access.readOnly,data:loadProject(id)});
+  if(access.readOnly)throw new Error('Guide access is read-only. Use the guide tracker for approval and feedback.');
   const record=saveRecord(id,r.action,r.payload||{});SpreadsheetApp.flush();
   return jsonResponse({ok:true,version:3,record:record,data:loadProject(id)});
  }catch(error){return jsonResponse({ok:false,error:error.message});}
