@@ -1,4 +1,4 @@
-// Research workflow v4. Team codes stay in Script Properties and the private tracker.
+// Research workflow v5. Team codes stay in Script Properties and the private tracker.
 const SCHEMAS = {
  Papers:['Paper ID','Project ID','Title','Author and Year','Type','Owner','DOI or Legal Link','Relevance Rationale','Screening Status','Submitted By','Submitted At','Authors','Year','Venue','Drive Link','Screening Notes','Revision'],
  'Literature Review':['Paper ID','Project ID','Author','Year','Research Task','Algorithm or Method','Dataset','Metrics','Result','Limitations','Research Gap','Reviewer','Guide Approval','Review Status','Updated At','Revision'],
@@ -8,7 +8,10 @@ const SCHEMAS = {
  'Methodology':['Record ID','Project ID','Method Scope','System Workflow','Data and Permission Record','Proposed Method','Baseline Methods','Evaluation Plan','Metrics and Success Criteria','Experiment Protocol','Reproducibility and Environment','Contribution Claim','Evidence Folder','Owner','Guide Approval','Guide Feedback','Updated At','Revision','Submission Type','Team Contributors','Source Draft IDs','Final Team Approval','First Submitted At','Comparison Notes'],
  Interactions:['Interaction ID','Project ID','Date','Mode','Participants','Feedback','Action Items','Completion Status','Recorded At','Revision'],
  'Portal Audit':['Timestamp','Project ID','Action','Record ID','Owner','Revision'],
- 'Portal Access':['Project ID','Team Access Code','Instructions']
+ 'Portal Access':['Project ID','Team Access Code','Instructions'],
+ 'Result Analysis':['Record ID','Project ID','Record Type','Title','Owner','Methodology ID','Methodology Revision','Stage','Execution Outcome','Work Status','Research Question','Data and Test Set','Comparison and Controls','Protocol and Configuration','Sample and Repeats','Project Data Checks','Project Evaluation Checks','Project Validity Checks','Linked Experiment IDs','Individual Contribution','Findings','Failure Cases','Limitations','Claim Outcome','Evidence URL','Code URL','Team Confirmation','Changes Since Review','Metric Data','Source Revisions','Guide Approval','Guide Feedback','Guide Reviewer','Reviewed At','First Saved At','First Submitted At','Updated At','Revision'],
+ 'Result Metrics':['Timestamp','Project ID','Record ID','Revision','Owner','Scenario','Metric','Unit','Direction','Baseline Name','Baseline Value','Proposed Value','Difference','Relative Improvement Percent','Uncertainty'],
+ 'Result History':['Timestamp','Project ID','Record ID','Revision','Event','Actor','Snapshot']
 };
 function spreadsheet() {
  const id=PropertiesService.getScriptProperties().getProperty('SPREADSHEET_ID');
@@ -73,23 +76,24 @@ function authorize(r){
 }
 function ownerAllowed(id,owner){if(!records('Students').some(r=>r['Project ID']===id&&r.Role==='Student'&&r.Name===owner))throw new Error('Select a student from this team.');}
 function selectProject(name,id){return records(name).filter(r=>r['Project ID']===id);}
-function loadProject(id){return{papers:selectProject('Papers',id),reviews:selectProject('Literature Review',id),problems:selectProject('Research Problems',id),searches:selectProject('Search Log',id),gaps:selectProject('Research Gaps',id),methodologies:selectProject('Methodology',id),interactions:selectProject('Interactions',id)};}
+function loadProject(id){return{papers:selectProject('Papers',id),reviews:selectProject('Literature Review',id),problems:selectProject('Research Problems',id),searches:selectProject('Search Log',id),gaps:selectProject('Research Gaps',id),methodologies:selectProject('Methodology',id),results:selectProject('Result Analysis',id),interactions:selectProject('Interactions',id)};}
 function doGet(){return jsonResponse({ok:true,version:3,message:'My Capstone Guide API. Team access required for records.'});}
 function doPost(e){
  const lock=LockService.getScriptLock();
  try{
   const r=JSON.parse(e.postData.contents),access=authorize(r),id=access.projectId;
   if(!lock.tryLock(25000))throw new Error('Tracker busy. Retry shortly.');
-  if(r.action==='loadProject')return jsonResponse({ok:true,version:3,readOnly:access.readOnly,data:loadProject(id)});
+  if(r.action==='loadProject')return jsonResponse({ok:true,version:3,capabilities:['results-v1'],readOnly:access.readOnly,data:loadProject(id)});
   if(access.readOnly)throw new Error('Guide access is read-only. Use the guide tracker for approval and feedback.');
   const record=saveRecord(id,r.action,r.payload||{});SpreadsheetApp.flush();
-  return jsonResponse({ok:true,version:3,record:record,data:loadProject(id)});
+  return jsonResponse({ok:true,version:3,capabilities:['results-v1'],record:record,data:loadProject(id)});
  }catch(error){return jsonResponse({ok:false,error:error.message});}
  finally{if(lock.hasLock())lock.releaseLock();}
 }
 function saveRecord(projectId,action,p){
  requireFields(p,['id','owner']);ownerAllowed(projectId,p.owner);
  if(!/^[a-zA-Z0-9_-]{3,100}$/.test(p.id))throw new Error('Invalid record ID.');
+ if(action==='saveResult')return saveResultRecord(projectId,p);
  const now=new Date().toISOString();let name,key,row;
  if(action==='saveProblem'){
   requireFields(p,['statement','motivation','question','objectives','scope']);if(p.driveFolder)requireUrl(p.driveFolder,true);
@@ -151,3 +155,111 @@ function saveRecord(projectId,action,p){
  spreadsheet().getSheetByName('Portal Audit').appendRow([now,projectId,action,p.id,safeCell(p.owner),revision+1]);return row;
 }
 function jsonResponse(payload){return ContentService.createTextOutput(JSON.stringify(payload)).setMimeType(ContentService.MimeType.JSON);}
+
+function setupResultsWorkflow(){
+ ['Result Analysis','Result Metrics','Result History'].forEach(name=>{
+  const s=ensureSheet(name),n=SCHEMAS[name].length;
+  s.getRange(1,1,1,n).setBackground('#b0322c').setFontColor('#ffffff').setFontWeight('bold').setWrap(true);
+  s.setRowHeight(1,48);s.setColumnWidths(1,n,190);s.setFrozenRows(1);
+ });
+ const sheet=spreadsheet().getSheetByName('Result Analysis'),headers=SCHEMAS['Result Analysis'];
+ const validation=SpreadsheetApp.newDataValidation().requireValueInList(['Pending','Approved','Revise'],true).setAllowInvalid(false).build();
+ sheet.getRange(2,headers.indexOf('Guide Approval')+1,sheet.getMaxRows()-1,1).setDataValidation(validation);
+ ['SoAI-092','LA7187','SoAI-424'].forEach(id=>{
+  const name=id+' Results',s=spreadsheet().getSheetByName(name)||spreadsheet().insertSheet(name);
+  if(s.getMaxColumns()<headers.length)s.insertColumnsAfter(s.getMaxColumns(),headers.length-s.getMaxColumns());
+  s.getRange(1,1,1,headers.length).setValues([headers]).setBackground('#b0322c').setFontColor('#ffffff').setFontWeight('bold').setWrap(true);
+  s.getRange('A2').setFormula('=IFERROR(FILTER(\'Result Analysis\'!A2:AL,\'Result Analysis\'!B2:B="'+id+'"),"")');
+  s.setFrozenRows(1);s.setRowHeight(1,48);s.setColumnWidths(1,headers.length,190);
+ });
+ if(!ScriptApp.getProjectTriggers().some(t=>t.getHandlerFunction()==='captureResultGuideEdit'))ScriptApp.newTrigger('captureResultGuideEdit').forSpreadsheet(spreadsheet()).onEdit().create();
+}
+function resultHistory(row,event,actor){
+ spreadsheet().getSheetByName('Result History').appendRow([new Date().toISOString(),row['Project ID'],row['Record ID'],row.Revision,event,safeCell(actor||''),JSON.stringify(row)]);
+}
+function captureResultGuideEdit(e){
+ if(!e||!e.range||e.range.getSheet().getName()!=='Result Analysis'||e.range.getLastRow()<2)return;
+ const s=e.range.getSheet(),headers=s.getRange(1,1,1,s.getLastColumn()).getValues()[0],watched=['Guide Approval','Guide Feedback','Guide Reviewer'];
+ if(!headers.slice(e.range.getColumn()-1,e.range.getLastColumn()).some(h=>watched.includes(h)))return;
+ const lock=LockService.getScriptLock();if(!lock.tryLock(25000))throw new Error('Guide history is busy. Retry the guide edit.');
+ try{
+  for(let n=Math.max(2,e.range.getRow());n<=e.range.getLastRow();n++){
+   const values=s.getRange(n,1,1,headers.length).getValues()[0],row=Object.fromEntries(headers.map((h,i)=>[h,values[i]]));if(!row['Record ID'])continue;
+   row['Reviewed At']=new Date().toISOString();s.getRange(n,headers.indexOf('Reviewed At')+1).setValue(row['Reviewed At']);
+   resultHistory(row,'Guide edit',row['Guide Reviewer']||'Guide');
+  }
+ }finally{lock.releaseLock();}
+}
+function validatedResultMetrics(value,strict){
+ let list;try{list=JSON.parse(value||'[]');}catch{throw new Error('Metric comparisons are unreadable. Reopen this record.');}
+ if(!Array.isArray(list)||list.length>40)throw new Error('Use at most 40 metric comparisons per evidence record.');
+ return list.map(m=>{
+  if(!strict)return Object.fromEntries(['metric','unit','scenario','baselineName','direction','baseline','proposed','uncertainty'].map(k=>[k,String(m[k]??'')]));
+  requireFields(m,['metric','unit','scenario','baselineName','direction']);
+  if(!['Higher is better','Lower is better'].includes(m.direction))throw new Error('Choose the metric direction.');
+  if(m.baseline===''||m.proposed===''||m.baseline==null||m.proposed==null||!Number.isFinite(Number(m.baseline))||!Number.isFinite(Number(m.proposed)))throw new Error('Enter numeric baseline and proposed values, or remove the unfinished metric comparison.');
+  return {metric:String(m.metric),unit:String(m.unit),scenario:String(m.scenario),baselineName:String(m.baselineName),direction:m.direction,baseline:Number(m.baseline),proposed:Number(m.proposed),uncertainty:String(m.uncertainty||'')};
+ });
+}
+function saveResultRecord(projectId,p){
+ requireFields(p,['recordType','title','workStatus']);
+ const types=['Experiment Evidence','Individual Analysis','Final Team Synthesis'];
+ if(!types.includes(p.recordType)||!['In progress','Submitted'].includes(p.workStatus))throw new Error('Choose a valid result type and status.');
+ const rows=records('Result Analysis'),previous=rows.find(r=>String(r['Record ID'])===p.id),teamRows=rows.filter(r=>r['Project ID']===projectId);
+ if(previous&&previous['Project ID']!==projectId)throw new Error('Record belongs to another team.');
+ if(previous&&(previous.Owner!==p.owner||previous['Record Type']!==p.recordType))throw new Error('A saved result keeps its student and record type. Open the correct record.');
+ if(p.recordType!=='Experiment Evidence'&&teamRows.some(r=>r['Record ID']!==p.id&&r['Record Type']===p.recordType&&(p.recordType==='Final Team Synthesis'||r.Owner===p.owner)))throw new Error('This analysis already exists. Open and revise the existing record.');
+ const experiment=p.recordType==='Experiment Evidence',submitted=p.workStatus==='Submitted';
+ if(experiment&&(!['Pilot','Final'].includes(p.stage)||!['Measured results','Failed or blocked'].includes(p.execution)))throw new Error('Choose the experiment stage and outcome.');
+ const method=selectProject('Methodology',projectId).find(r=>r['Record ID']===p.methodologyId&&r['Submission Type']==='Final Team Version');
+ if(p.methodologyId&&!method)throw new Error('Choose a final methodology from this team.');
+ if(submitted&&(!method||method['Final Team Approval']!=='Approved'))throw new Error('An approved Final Team Version of the methodology is required. Save In progress until it is approved.');
+ if(p.evidenceUrl)requireUrl(p.evidenceUrl);if(p.codeUrl)requireUrl(p.codeUrl);
+ const metrics=experiment?validatedResultMetrics(p.metrics,submitted):[],linkedIds=String(p.linkedIds||'').split(',').map(x=>x.trim()).filter(Boolean),sources={};
+ if(method)sources[method['Record ID']]=method.Revision;
+ const linked=linkedIds.map(id=>teamRows.find(r=>r['Record ID']===id&&r['Record Type']==='Experiment Evidence'));
+ if(linked.some(r=>!r))throw new Error('Choose experiment evidence from this team.');
+ if(p.recordType==='Individual Analysis'&&linked.some(r=>r.Owner!==p.owner))throw new Error('Link your own experiment records. Describe collaboration in your contribution.');
+ linked.forEach(r=>sources[r['Record ID']]=r.Revision);
+ if(submitted){
+  requireFields(p,['question','findings','failures','limitations','claimOutcome','evidenceUrl']);
+  if(!['Inconclusive','Supported within tested scope','Mixed evidence','Not supported'].includes(p.claimOutcome))throw new Error('Choose what the evidence supports.');
+  if(previous&&previous['Guide Approval']==='Revise')requireFields(p,['changes']);
+  if(experiment){
+   requireFields(p,['dataRecord','controls','protocol','sample','projectData','projectEvaluation','projectValidity']);
+   if(p.execution==='Measured results'&&!metrics.length)throw new Error('Add at least one measured comparison, or choose Failed or blocked.');
+   if(p.execution==='Failed or blocked'&&p.claimOutcome==='Supported within tested scope')throw new Error('A failed or blocked run cannot support a positive performance claim.');
+   if(metrics.some(m=>!m.uncertainty.trim()))throw new Error('For each metric, describe variation/uncertainty or explain why it is unavailable.');
+  }else{
+   if(!linked.length)throw new Error('Select the experiment evidence supporting this analysis.');
+   if(linked.some(r=>r['Work Status']!=='Submitted'||r['Methodology ID']!==p.methodologyId||Number(r['Methodology Revision'])!==Number(method.Revision)))throw new Error('Submit current experiment evidence under this final methodology first.');
+   if(p.recordType==='Individual Analysis')requireFields(p,['contribution']);
+   else{
+    if(p.teamCheck!=='Both members reviewed this synthesis')throw new Error('Both members must review the final synthesis before submission.');
+    if(linked.some(r=>r.Stage!=='Final'))throw new Error('The final team synthesis must reference final experiments; keep pilot conclusions in individual analyses.');
+    const students=records('Students').filter(r=>r['Project ID']===projectId&&r.Role==='Student').map(r=>r.Name);
+    students.forEach(student=>{
+     const analysis=teamRows.find(r=>r.Owner===student&&r['Record Type']==='Individual Analysis'&&r['Work Status']==='Submitted'&&r['Methodology ID']===p.methodologyId&&Number(r['Methodology Revision'])===Number(method.Revision));
+     if(!analysis)throw new Error(student+' must submit an individual analysis under the final methodology first.');
+     let refs;try{refs=JSON.parse(analysis['Source Revisions']||'{}');}catch{throw new Error('Reopen and resubmit '+student+'’s analysis.');}
+     if(Object.entries(refs).some(([id,rev])=>{const source=id===method['Record ID']?method:teamRows.find(r=>r['Record ID']===id);return !source||String(source.Revision)!==String(rev);}))throw new Error(student+'’s analysis refers to older evidence. Update it before the team synthesis.');
+     sources[analysis['Record ID']]=analysis.Revision;
+    });
+   }
+  }
+ }
+ const now=new Date().toISOString(),map={question:'Research Question',dataRecord:'Data and Test Set',controls:'Comparison and Controls',protocol:'Protocol and Configuration',sample:'Sample and Repeats',projectData:'Project Data Checks',projectEvaluation:'Project Evaluation Checks',projectValidity:'Project Validity Checks',contribution:'Individual Contribution',findings:'Findings',failures:'Failure Cases',limitations:'Limitations',claimOutcome:'Claim Outcome',evidenceUrl:'Evidence URL',codeUrl:'Code URL',teamCheck:'Team Confirmation',changes:'Changes Since Review'};
+ const row={'Record ID':p.id,'Project ID':projectId,'Record Type':p.recordType,'Title':p.title,'Owner':p.owner,'Methodology ID':p.methodologyId||'','Methodology Revision':method?method.Revision:'','Stage':experiment?p.stage:'','Execution Outcome':experiment?p.execution:'','Work Status':p.workStatus,'Linked Experiment IDs':linkedIds.join(', '),'Metric Data':JSON.stringify(metrics),'Source Revisions':JSON.stringify(sources)};
+ Object.entries(map).forEach(([k,h])=>row[h]=p[k]||'');
+ if(JSON.stringify(row).length>40000)throw new Error('This record is too long. Put detailed outputs in the evidence folder and shorten the explanation.');
+ const revision=Number(previous&&previous.Revision||0);
+ if(previous&&Object.keys(row).every(k=>String(previous[k]??'')===String(row[k]??'')))return previous;
+ if(revision!==Number(p.revision||0))throw new Error('This record changed. Reload shared records and open its latest version.');
+ row['Guide Approval']='Pending';row['Guide Feedback']=previous&&previous['Guide Feedback']||'';row['Guide Reviewer']='';row['Reviewed At']='';row['First Saved At']=previous&&previous['First Saved At']||now;row['First Submitted At']=previous&&previous['First Submitted At']||(submitted?now:'');row['Updated At']=now;row.Revision=revision+1;
+ if(previous)resultHistory(previous,'Before student revision',p.owner);
+ put('Result Analysis','Record ID',p.id,row);
+ const measured=metrics.filter(m=>m.metric&&m.unit&&m.scenario&&m.baselineName&&m.baseline!==''&&m.proposed!==''&&Number.isFinite(Number(m.baseline))&&Number.isFinite(Number(m.proposed)));
+ if(measured.length){const s=spreadsheet().getSheetByName('Result Metrics'),values=measured.map(m=>{const b=Number(m.baseline),v=Number(m.proposed);return [now,projectId,p.id,row.Revision,safeCell(p.owner),safeCell(m.scenario),safeCell(m.metric),safeCell(m.unit),m.direction,safeCell(m.baselineName),b,v,v-b,b===0?'':(m.direction==='Lower is better'?b-v:v-b)/Math.abs(b)*100,safeCell(m.uncertainty)];});if(s.getLastRow()+values.length>s.getMaxRows())s.insertRowsAfter(s.getMaxRows(),values.length);s.getRange(s.getLastRow()+1,1,values.length,15).setValues(values);}
+ resultHistory(row,submitted?'Student submission':'Progress saved',p.owner);
+ spreadsheet().getSheetByName('Portal Audit').appendRow([now,projectId,'saveResult',p.id,safeCell(p.owner),row.Revision]);return row;
+}

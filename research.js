@@ -9,12 +9,13 @@ const definitions={
  review:{title:'4 · Read and build the literature review',action:'saveReview',collection:'reviews',idColumn:'Paper ID',help:'Use your own words. Include metric values and test conditions in Results. Use “Not reported” when a paper does not provide a detail. Reading saves an in-progress review; Complete means every field has been checked against the paper.',fields:[field('paperId','Included paper','Paper ID','paper'),field('task','Research task / objective','Research Task'),field('algorithm','Algorithm or method','Algorithm or Method'),field('dataset','Dataset, size and train/test split','Dataset'),field('metrics','Evaluation metrics','Metrics'),field('result','Results with values and experimental context','Result'),field('limitations','Limitations and threats to validity','Limitations'),field('gap','Relevance / unresolved gap for our project','Research Gap'),field('status','Reading status','Review Status','select',true,['Reading','Complete'])]},
  gap:{title:'5 · Synthesize related work and identify the gap',action:'saveGap',collection:'gaps',idColumn:'Record ID',help:'Group studies by approach, compare findings, and explain the gap supported by the evidence. Cite Paper IDs. This supports the final team methodology and related-work section.',fields:[field('synthesis','Related-work synthesis: agreements, differences, trends','Synthesis'),field('gap','Evidence-backed research gap','Research Gap'),field('contribution','Proposed contribution and how to evaluate it','Proposed Contribution'),field('paperIds','Supporting Paper IDs, separated by commas','Supporting Paper IDs','text')]},
  methodology:{title:'6 · Submit the methodology plan',action:'saveMethodology',collection:'methodologies',idColumn:'Record ID',help:'Each student submits an individual draft. After both drafts are guide-approved, compare them and submit one consolidated Final team version as a new record. The guide reviews that final version separately; individual approvals do not select the team method.',fields:[field('submissionType','Submission type','Submission Type','select',true,['Individual Draft','Final Team Version']),field('comparison','For the final team version: what was kept or changed from each draft, and why?','Comparison Notes','textarea',false),field('scope','Method scope and boundary','Method Scope'),field('workflow','System workflow / architecture','System Workflow'),field('dataRecord','Data source, licence, consent and permissions','Data and Permission Record'),field('method','Proposed method / algorithm','Proposed Method'),field('baselines','Baseline method(s) for comparison','Baseline Methods'),field('evaluation','Evaluation design and test cases','Evaluation Plan'),field('metrics','Metrics, success criteria and claimed outcomes','Metrics and Success Criteria'),field('protocol','Experiment protocol','Experiment Protocol'),field('reproducibility','Reproducibility and environment','Reproducibility and Environment'),field('contribution','Contribution claim','Contribution Claim'),field('evidenceFolder','Methodology evidence folder','Evidence Folder','url')]},
+ result:RESULT_DEFINITION,
  interaction:{title:'Record guide interaction',action:'addInteraction',collection:'interactions',idColumn:'Interaction ID',help:'Record online or offline discussion and concrete next actions. Guide approval is recorded by the guide in the tracker.',fields:[field('date','Meeting date','Date','date'),field('mode','Mode','Mode','select',true,['Online','Offline']),field('feedback','Discussion and feedback','Feedback'),field('actionItems','Next actions, owners and due dates','Action Items')]}
 };
 const $=s=>document.querySelector(s),esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 function readJSON(key,fallback){try{return JSON.parse(localStorage.getItem(key))||fallback;}catch{return fallback;}}
 let team=teams.find(t=>t.id===readJSON('capstone-research-hub-v2',{}).activeProjectId)||teams[0];
-const emptyData=()=>({papers:[],reviews:[],problems:[],searches:[],gaps:[],methodologies:[],interactions:[]});
+const emptyData=()=>({papers:[],reviews:[],problems:[],searches:[],gaps:[],methodologies:[],results:[],interactions:[]});
 let shared=emptyData(),connected=false,busy=false,activeKind='problem',guideView=false,guideAccessCode='';
 let drafts=readJSON('capstone-research-drafts-v3',{});
 const dateToday=()=>new Date(Date.now()-new Date().getTimezoneOffset()*60000).toISOString().slice(0,10);
@@ -22,6 +23,7 @@ const draftKey=kind=>team.id+':'+kind;
 const safeURL=value=>{try{const u=new URL(value);return u.protocol==='https:'?u.href:'';}catch{return '';}};
 const link=(url,label)=>safeURL(url)?`<a href="${esc(safeURL(url))}" target="_blank" rel="noopener noreferrer">${esc(label)}</a>`:esc(label);
 function guideDecision(row){
+ if(row?.['Work Status']==='In progress')return {approval:'Pending',tone:'reading',label:'Student work in progress'};
  const approval=String(row?.['Submission Type']==='Final Team Version'?row?.['Final Team Approval']||'Pending':row?.['Guide Approval']||'Pending').trim();
  if(approval==='Approved')return {approval,tone:'approved',label:'Approved'};
  if(approval==='Revise')return {approval,tone:'revise',label:'Revision required'};
@@ -47,7 +49,7 @@ function guideFeedback(row,recordLabel='review'){
  return `<div class="guide-feedback"><strong>Guide feedback</strong><p>${esc(feedback)}</p><small>Update this ${recordLabel}, then save to resubmit.</small></div>`;
 }
 function guideRecordLabel(kind){
- return kind==='problem'?'problem statement':kind==='gap'?'research-gap synthesis':kind==='methodology'?'methodology plan':'review';
+ return kind==='result'?'result record':kind==='problem'?'problem statement':kind==='gap'?'research-gap synthesis':kind==='methodology'?'methodology plan':'review';
 }
 function showGuideNotice(row,recordLabel='review'){
  const notice=$('#guide-notice');if(!notice)return;
@@ -58,7 +60,7 @@ function showGuideNotice(row,recordLabel='review'){
  if(decision.tone==='revise')notice.innerHTML=`<strong>🔴 Revision required</strong><p>${esc(feedback||`Please correct this ${recordLabel} before resubmitting it for guide approval.`)}</p><p class="helper">Make the corrections below and choose <strong>Save to Google Sheets</strong> to resubmit this ${recordLabel} for guide approval.</p>`;
  else if(decision.tone==='superseded')notice.innerHTML=`<strong>— Superseded</strong><p>${esc(feedback||'This earlier record is retained for history. Please work from the latest submitted version.')}</p>`;
  else if(decision.tone==='approved')notice.innerHTML=`<strong>🟢 Guide approved</strong><p>This ${recordLabel} has passed the current guide check.</p>`;
- else if(decision.tone==='reading')notice.innerHTML=`<strong>◌ Student work in progress</strong><p>Finish checking this paper, then change Reading status to Complete and save it for guide review.</p>`;
+ else if(decision.tone==='reading')notice.innerHTML=`<strong>◌ Student work in progress</strong><p>${recordLabel==='result record'?'Complete the evidence, choose Submit for guide review and save when ready.':'Finish checking this paper, then change Reading status to Complete and save it for guide review.'}</p>`;
  else notice.innerHTML=`<strong>◌ Awaiting guide review</strong><p>Your latest saved ${recordLabel} is awaiting the guide’s decision.</p>`;
 }
 function saveDraft(kind,data){drafts[draftKey(kind)]=data;localStorage.setItem('capstone-research-drafts-v3',JSON.stringify(drafts));}
@@ -70,11 +72,13 @@ document.querySelector('main').innerHTML=`
  <section class="panel" style="margin-bottom:18px"><h2>Your next steps</h2><p id="next-step"></p><div id="assignments"></div><p class="helper">Confirm the problem and screen sources → read and review → compare evidence and agree the gap. Each student targets 15 journals + 5 conferences. Quality and relevance matter; discuss any shortfall with your guide.</p></section>
  <nav id="steps" aria-label="Research steps">${Object.entries(definitions).map(([k,d])=>`<button type="button" data-step="${k}" class="secondary">${esc(d.title)}</button>`).join('')}</nav>
  <section class="panel" id="editor-panel"><h2 id="form-title"></h2><p id="form-help" class="helper"></p><aside id="methodology-guidance" class="methodology-guidance" hidden></aside><div id="guide-notice" hidden></div><form id="research-form"></form><p id="save-message" role="status"></p></section>
- <section class="panel" style="margin-top:18px"><div class="section-heading"><h2>Team research records</h2><button id="export-review" type="button" class="secondary">Export literature review CSV</button></div><p class="helper">Only confirmed Google Sheets records appear below. Red entries need revision; green entries are approved; grey problem statements are retained historical drafts.</p><div id="records"></div></section>
+ <section class="panel results-overview"><h2>Results: individual work and team conclusion</h2><p class="helper">Due 10 November, 11:59 pm IST. Evidence quality and understanding guide assessment; record counts are not marks. Student names are self-reported under the shared team code.</p><div id="result-progress" class="result-progress"></div><button id="export-results" type="button" class="secondary">Export result-analysis report</button><p class="helper">Download a readable report, open it and choose Print / save PDF.</p></section>
+ <section class="panel" style="margin-top:18px"><div class="section-heading"><h2>Team research records</h2><button id="export-review" type="button" class="secondary">Export literature review CSV</button></div><p class="helper">Only confirmed Google Sheets records appear below. Red entries need revision; green entries are approved; grey entries are in progress or retained history.</p><div id="records"></div></section>
  <section class="panel" style="margin-top:18px"><h2>University milestones</h2><p>7 Oct: problem and literature review · 14 Oct: methodology · 10 Nov: result analysis · 25 Nov: conclusion and first draft · 5 Dec: presentation, viva and TRL/submission status.</p><p class="helper">The 14 October methodology milestone has passed. Complete and review one final team version now, then use the remaining October days for implementation and experiments. Begin writing methods and related work while building.</p></section>`;
 const legacy=readJSON('capstone-research-hub-v2',{});
 function setMessage(id,text){$(id).textContent=text;}
 function updateProgress(){
+ $('#result-progress').innerHTML=connected?resultProgress():'Load your team records to see result-analysis progress.';
  $('#team-title').textContent=team.title;$('#team-selector').value=team.id;
  const papers=shared.papers.filter(p=>p['Screening Status']!=='Rejected'),completed=shared.reviews.filter(r=>r['Review Status']==='Complete'&&papers.some(p=>p['Paper ID']===r['Paper ID']));
  const finalMethod=shared.methodologies.find(r=>r['Submission Type']==='Final Team Version');
@@ -90,26 +94,35 @@ const methodologyGuidance={
  'SoAI-424':{title:'Smart Video Learning Assistant — current scope check',items:['Use the recorded scope: English YouTube learning videos with available captions/transcripts. Record source selection, permissions and how data is split or sampled.','Compare sentence-embedding semantic segmentation with fixed-length chunks. Keep note/quiz support secondary to the primary timestamp-retrieval question.','Evaluate segment boundaries separately with annotated ground truth or a benchmark (for example Boundary F1, Pk or WindowDiff), and retrieval with a query/relevance set (for example Recall@k or MRR). Do not use cosine similarity to generated notes as the primary validity measure.']}
 };
 function renderMethodologyGuidance(kind){
- const box=$('#methodology-guidance');if(kind!=='methodology'){box.hidden=true;box.innerHTML='';return;}
+ const box=$('#methodology-guidance');if(kind==='result'){box.hidden=false;box.innerHTML=resultGuidance();return;}if(kind!=='methodology'){box.hidden=true;box.innerHTML='';return;}
  const guidance=methodologyGuidance[team.id];box.hidden=false;
  box.innerHTML=`<p class="eyebrow">PROJECT-SPECIFIC METHOD CHECK</p><h3>${esc(guidance.title)}</h3><ul>${guidance.items.map(item=>`<li>${esc(item)}</li>`).join('')}</ul>`;
 }
 function renderForm(kind,data){
  activeKind=kind;showGuideNotice(null);const d=definitions[kind];data=data||drafts[draftKey(kind)]||{id:crypto.randomUUID(),revision:0,owner:team.students[0],date:dateToday()};
+ if(kind==='result'){data={recordType:'Experiment Evidence',workStatus:'In progress',stage:'Pilot',execution:'Measured results',...data};}
+ const fields=kind==='result'?resultFields(data):d.fields;
  $('#form-title').textContent=d.title;$('#form-help').textContent=d.help;renderMethodologyGuidance(kind);
- $('#research-form').innerHTML=`<input name="id" type="hidden" value="${esc(data.id||crypto.randomUUID())}"><input name="revision" type="hidden" value="${esc(data.revision||0)}">${kind==='methodology'?'<p class="methodology-stage">Individual drafts are reviewed separately. For the final team version, discuss both approved drafts, resolve differences, then create one new record. Guide approval of that new record identifies the method the team will follow.</p>':''}<div class="form-grid">${d.fields.map(f=>{
+ $('#research-form').innerHTML=`<input name="id" type="hidden" value="${esc(data.id||crypto.randomUUID())}"><input name="revision" type="hidden" value="${esc(data.revision||0)}">${kind==='methodology'?'<p class="methodology-stage">Individual drafts are reviewed separately. For the final team version, discuss both approved drafts, resolve differences, then create one new record. Guide approval of that new record identifies the method the team will follow.</p>':''}<div class="form-grid">${fields.map(f=>{
   const value=data[f.key]??'';let control;
-  if(f.type==='select'||f.type==='paper'){
-   const opts=f.type==='paper'?[['','Select an included paper'],...shared.papers.filter(p=>p['Screening Status']!=='Rejected').map(p=>[p['Paper ID'],p.Title])]:f.options.map(o=>Array.isArray(o)?o:[o,o]);
+  if(f.type==='records'){
+   const selected=String(value).split(',').map(s=>s.trim()),opts=(shared.results||[]).filter(r=>r['Record Type']==='Experiment Evidence'&&r['Work Status']==='Submitted'&&(data.recordType==='Final Team Synthesis'||r.Owner===data.owner));
+   control=`<div class="evidence-options">${opts.length?opts.map(r=>`<label><input type="checkbox" name="linkedIds" value="${esc(r['Record ID'])}" ${selected.includes(r['Record ID'])?'checked':''}>${esc(r.Title)} · ${esc(r.Owner)} · ${esc(r['Stage'])}</label>`).join(''):'No submitted experiment evidence is available for this selection yet.'}</div>`;
+  }else if(f.type==='select'||f.type==='paper'||f.type==='methodology'){
+   const opts=f.type==='methodology'?[['','Preparation / select approved final method'],...shared.methodologies.filter(r=>r['Submission Type']==='Final Team Version').map(r=>[r['Record ID'],`${r['Final Team Approval']} · ${previewText(r['Method Scope'],85)}`])]:f.type==='paper'?[['','Select an included paper'],...shared.papers.filter(p=>p['Screening Status']!=='Rejected').map(p=>[p['Paper ID'],p.Title])]:f.options.map(o=>Array.isArray(o)?o:[o,o]);
    control=`<select name="${f.key}" ${f.required?'required':''}>${opts.map(([v,l])=>`<option value="${esc(v)}" ${v===value?'selected':''}>${esc(l)}</option>`).join('')}</select>`;
   }else if(f.type==='textarea')control=`<textarea name="${f.key}" rows="3" maxlength="15000" ${f.required?'required':''}>${esc(value)}</textarea>`;
   else control=`<input name="${f.key}" type="${f.type}" value="${esc(value)}" ${f.type==='number'?'min="1900" max="'+(new Date().getFullYear()+1)+'"':''} ${f.type==='url'?'placeholder="https://..."':''} ${f.required?'required':''}>`;
   return `<label class="${f.type==='textarea'?'wide':''}">${esc(f.label)}${control}</label>`;
  }).join('')}<label>Recorded by<select name="owner">${team.students.map(s=>`<option ${s===data.owner?'selected':''}>${esc(s)}</option>`).join('')}</select></label></div>
- <div class="form-actions"><button type="submit" ${busy?'disabled':''}>Save to Google Sheets</button><button type="button" id="save-draft" class="secondary">Save draft on this device</button><button type="button" id="new-record" class="secondary">New record</button>${kind==='search'?'<a id="scholar-link" target="_blank" rel="noopener noreferrer">Open Google Scholar</a>':''}</div>`;
+ ${kind==='result'&&data.recordType==='Experiment Evidence'?metricEditor(data.metrics):''}<div class="form-actions"><button type="submit" ${busy?'disabled':''}>Save to Google Sheets</button><button type="button" id="save-draft" class="secondary">Save draft on this device</button><button type="button" id="new-record" class="secondary">New record</button>${kind==='search'?'<a id="scholar-link" target="_blank" rel="noopener noreferrer">Open Google Scholar</a>':''}</div>`;
  $('#save-draft').onclick=()=>{saveDraft(kind,formData());setMessage('#save-message','Draft saved on this device; not submitted to Sheets.');};
  $('#new-record').onclick=()=>{renderForm(kind,{id:crypto.randomUUID(),revision:0,owner:team.students[0],date:dateToday()});setMessage('#save-message','New record. Previous saved draft is retained until you start typing.');};
  $('#research-form').oninput=()=>{saveDraft(kind,formData());if(kind==='search')updateScholar();};
+ if(kind==='result'){
+  bindMetricEditor();
+  ['recordType','workStatus','owner'].forEach(name=>{$('#research-form [name='+name+']').onchange=()=>{const p=formData();saveDraft(kind,p);renderForm(kind,p);};});
+ }
  if(kind==='review')$('#research-form [name=paperId]').onchange=e=>{
   const existing=shared.reviews.find(r=>r['Paper ID']===e.target.value);
   if(existing)openRecord('review',existing);else{const p={id:e.target.value,paperId:e.target.value,revision:0,owner:team.students[0]};renderForm(kind,p);saveDraft(kind,p);}
@@ -117,11 +130,12 @@ function renderForm(kind,data){
  if(kind==='search')updateScholar();document.querySelectorAll('[data-step]').forEach(b=>b.setAttribute('aria-current',b.dataset.step===kind?'step':'false'));
 }
 function updateScholar(){$('#scholar-link').href='https://scholar.google.com/scholar?q='+encodeURIComponent($('#research-form [name=query]').value);}
-function formData(){const p=Object.fromEntries(new FormData($('#research-form')));if(activeKind==='review')p.id=p.paperId;return p;}
+function formData(){const fd=new FormData($('#research-form')),p=Object.fromEntries(fd);if(activeKind==='review')p.id=p.paperId;if(activeKind==='result'){p.linkedIds=fd.getAll('linkedIds').join(', ');p.metrics=JSON.stringify(metricsFromForm());}return p;}
 function openRecord(kind,row){
  const d=definitions[kind],data={id:row[d.idColumn],revision:row.Revision||0,owner:row.Owner||row.Reviewer||row['Submitted By']||team.students[0]};d.fields.forEach(f=>{data[f.key]=String(row[f.column]??'');if(f.type==='date')data[f.key]=data[f.key].slice(0,10);});
+ if(kind==='result')data.metrics=row['Metric Data']||'[]';
  if(kind==='paper'){data.authors=data.authors||row['Author and Year'];if(!['Screened','Rejected'].includes(data.status))data.status='Screened';}
- const isGuided=['review','problem','gap','methodology'].includes(kind),recordLabel=guideRecordLabel(kind);
+ const isGuided=['review','problem','gap','methodology','result'].includes(kind),recordLabel=guideRecordLabel(kind);
  renderForm(kind,data);if(isGuided)showGuideNotice(row,recordLabel);setMessage('#save-message',isGuided&&guideDecision(row).tone==='revise'?`Update the ${recordLabel} and save to resubmit it for guide review.`:guideDecision(row).tone==='reading'?'Editing an in-progress reading record. Mark it Complete when ready for guide review.':'Editing a shared record. Guide decision: '+guideDecision(row).label);$('#editor-panel').scrollIntoView({behavior:'smooth'});
 }
 function previewText(value,limit=175){const text=String(value??'').replace(/\s+/g,' ').trim();return text.length>limit?text.slice(0,limit-1).trimEnd()+'…':text||'Problem statement not recorded';}
@@ -190,7 +204,8 @@ function interactionCard(row,index){
 }
 function renderRecords(){
  const groups=[['problem',problemCard,'Open each problem statement to read its full scope and guide decision. Green is approved, red needs revision, yellow is awaiting review, and grey is a retained historical draft.'],['search',searchCard,'Open a search to see its keywords, date, notes and Scholar link.'],['paper',paperCard,'Open a paper to see its source links, screening reason and full publication details.'],['review',reviewCard,'Select a paper to view its full evidence. Green is approved, red needs revision, yellow is awaiting guide review, and grey means the student is still reading.'],['gap',gapCard,'Open a synthesis to compare the evidence and read the guide decision. Red entries must be corrected and resubmitted.'],['methodology',methodologyCard,'Open the methodology package to review the proposed system, data controls, baselines, evaluation and guide decision. Red entries require revision; yellow entries await review.'],['interaction',interactionCard,'Open an interaction to read the discussion, participants and next actions.']];
- $('#records').innerHTML=groups.map(([kind,card,help])=>{const rows=shared[definitions[kind].collection];return `<details ${['problem','paper','review','methodology'].includes(kind)?'open':''}><summary>${esc(definitions[kind].title)} (${rows.length})</summary><p class="helper review-list-help">${esc(help)}</p><div class="review-list">${rows.length?rows.map(card).join(''):'<p>No shared records yet.</p>'}</div></details>`;}).join('');
+ groups.splice(groups.length-1,0,['result',resultCard,'Open evidence and individual analyses, then the final team synthesis. Guide feedback remains visible after resubmission.']);
+ $('#records').innerHTML=groups.map(([kind,card,help])=>{const rows=shared[definitions[kind].collection]||[];return `<details ${['problem','paper','review','methodology','result'].includes(kind)?'open':''}><summary>${esc(definitions[kind].title)} (${rows.length})</summary><p class="helper review-list-help">${esc(help)}</p><div class="review-list">${rows.length?rows.map(card).join(''):'<p>No shared records yet.</p>'}</div></details>`;}).join('');
  const old=(legacy.papers||[]).filter(p=>p.projectId===team.id);
  if(old.length)$('#records').insertAdjacentHTML('beforeend',`<details><summary>Earlier browser drafts (${old.length})</summary><p>Check shared records for duplicates before submitting.</p>${old.map((p,i)=>`<p>${esc(p.title)} <button data-legacy="${i}" type="button">Review old draft</button></p>`).join('')}</details>`);
  document.querySelectorAll('[data-edit]').forEach(b=>b.onclick=()=>openRecord(b.dataset.edit,shared[definitions[b.dataset.edit].collection][Number(b.dataset.index)]));
@@ -209,6 +224,7 @@ async function request(action,payload,projectId=team.id,codeOverride=''){
    throw new Error(temporaryPage?'The tracker service temporarily returned a web page instead of team data. Please wait a minute, then load shared records again.':'The tracker service returned an unreadable response. Please try loading shared records again.');
   }
   if(!response.ok)throw new Error(result.error||'The tracker service could not complete this request.');
+  if(action==='saveResult'&&result.ok&&!result.capabilities?.includes('results-v1'))throw new Error('Result workflow deployment is not ready. Your draft is retained.');
   if(!result.ok)throw new Error(result.error||'Could not save.');if(result.version!==3)throw new Error('Backend needs the research-workflow update.');return result;
  }
 }
@@ -222,7 +238,7 @@ $('#research-form').onsubmit=async e=>{
  e.preventDefault();if(guideView){setMessage('#save-message','Guide view is read-only. Use the tracker for approval and feedback.');return;}const kind=activeKind,p=formData(),projectId=team.id;saveDraft(kind,p);
  if(kind==='methodology'&&p.submissionType==='Final Team Version'&&!String(p.comparison||'').trim()){setMessage('#save-message','Explain what was kept or changed from both individual drafts before submitting the final team version.');return;}
  setBusy(true);setMessage('#save-message','Saving and waiting for confirmation…');
- try{const r=await request(definitions[kind].action,p,projectId);shared=r.data;connected=true;p.revision=r.record.Revision;saveDraft(kind,p);updateProgress();renderRecords();renderForm(kind,p);if(['review','problem','gap','methodology'].includes(kind)){const collection=shared[definitions[kind].collection],idColumn=definitions[kind].idColumn,record=collection.find(row=>row[idColumn]===p.id);showGuideNotice(record,guideRecordLabel(kind));}setMessage('#save-message','Saved and confirmed in Google Sheets.');setMessage('#connection-message','Connected. Shared records are up to date.');}
+ try{const r=await request(definitions[kind].action,p,projectId);shared=r.data;connected=true;p.revision=r.record.Revision;saveDraft(kind,p);updateProgress();renderRecords();renderForm(kind,p);if(['review','problem','gap','methodology','result'].includes(kind)){const collection=shared[definitions[kind].collection],idColumn=definitions[kind].idColumn,record=collection.find(row=>row[idColumn]===p.id);showGuideNotice(record,guideRecordLabel(kind));}setMessage('#save-message','Saved and confirmed in Google Sheets.');setMessage('#connection-message','Connected. Shared records are up to date.');}
  catch(error){setMessage('#save-message','Draft retained on this device. Save not confirmed: '+error.message);}finally{setBusy(false);}
 };
 $('#team-selector').onchange=async e=>{team=teams.find(t=>t.id===e.target.value);shared=emptyData();connected=false;setMessage('#save-message','');updateProgress();renderRecords();renderForm('problem');if(guideView&&guideAccessCode){setBusy(true);setMessage('#connection-message','Loading guide view…');try{const r=await request('loadProject');shared=r.data;connected=true;updateProgress();renderRecords();setMessage('#connection-message','Guide view · read-only. Select another project to inspect its records.');}catch(error){setMessage('#connection-message',error.message);}finally{setBusy(false);}}else{$('#access-code').value=sessionStorage.getItem('capstone-code:'+team.id)||'';setMessage('#connection-message','Load this team’s shared records.');}};
@@ -233,4 +249,5 @@ $('#export-review').onclick=()=>{
  const cell=v=>'"'+String(v??'').replace(/^[=+@-]/,"'$&").replace(/"/g,'""')+'"';
  const csv=[columns,...shared.reviews.map(r=>columns.map(c=>r[c]))].map(r=>r.map(cell).join(',')).join('\r\n'),url=URL.createObjectURL(new Blob(['\ufeff'+csv],{type:'text/csv;charset=utf-8'})),a=document.createElement('a');a.href=url;a.download=team.id+'-literature-review.csv';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
 };
+$('#export-results').onclick=exportResultReport;
 $('#access-code').value=sessionStorage.getItem('capstone-code:'+team.id)||'';updateProgress();renderRecords();renderForm('problem');
