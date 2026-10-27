@@ -41,7 +41,7 @@ for (const teamId of ['SoAI-092', 'LA7187', 'SoAI-424']) {
   };
   vm.runInContext('team = teams.find(item => item.id === testTeamId); shared = testData; renderRecords();', context);
   const html = element('#records').innerHTML;
-  assert.equal((html.match(/<details\b/g) || []).length, 15, `${teamId}: eight sections and seven existing cards`);
+  assert.equal((html.match(/<details\b/g) || []).length, 17, `${teamId}: ten sections and seven existing cards`);
   assert.equal((html.match(/data-edit=/g) || []).length, 7, `${teamId}: every card remains editable`);
   assert.doesNotMatch(html, /<table\b/i, `${teamId}: no tabular record views`);
   assert.match(html, /Scholar search/);

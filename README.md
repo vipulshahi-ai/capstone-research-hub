@@ -46,6 +46,14 @@ Project-specific prompts follow the submitted scope. The metric editor records s
 
 Review Result Analysis using Guide Approval (Pending / Approved / Revise), Guide Feedback, Guide Reviewer and Reviewed At. The named team Results sheets are read-only formula views; edit the source Result Analysis sheet. Use numbered, actionable feedback. In-progress records are not presented as waiting for review. First Submitted At is preserved separately from revision timestamps. The report export produces readable HTML with a Print / save PDF button, including status, evidence links and feedback.
 
+## Publication readiness and first draft — prepare now, review by 25 November
+
+`Publication Readiness` is one team record. It records the working title, keywords, closest-paper comparison, measurable contribution, claim boundaries, ethics/permissions, data licence, reproducibility links, proposed author contributions and venue plan. Students can save it as **In progress**. A **Ready for guide review** submission requires three included Paper IDs, a novelty comparison, claim boundaries, reproducibility/environment details and an evidence archive. The guide verifies `Novelty Check` and `Reproducibility Check` separately in the sheet, then uses Guide Approval and Guide Feedback for the overall decision.
+
+Novelty is verified by checking that the claimed difference is stated against three actual included papers and is tested by the approved method and result evidence. Reproducibility is verified by opening the linked code/version record, evidence archive, environment/configuration, fixed seeds and raw outputs; a guide may sample-check a run before marking it checked.
+
+`Paper Draft Tracker` stores one team record per section: title/authors, abstract, introduction, related work, methodology, results, discussion/limitations, conclusion/future work and declarations/submission checklist. Each section has its owner, Drive document, supporting evidence link, current status and guide decision. Students can draft the introduction, related work and methodology before final results; results, discussion and conclusion must only make claims supported by approved evidence.
+
 For verification run `node --test tests`. This covers existing expandable views, read-only guide access, result submission gates, team boundaries, duplicate analyses, revisions, stale evidence, failed experiments and zero-valued baselines.
 
 Faculty milestone dates: 7 Oct problem/literature, 14 Oct methodology, 10 Nov results, 25 Nov first draft, 5 Dec viva/TRL/submission status. Results now have submission forms; first-draft and viva milestones remain a timeline.

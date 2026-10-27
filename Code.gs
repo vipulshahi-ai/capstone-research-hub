@@ -12,6 +12,8 @@ const SCHEMAS = {
  'Result Analysis':['Record ID','Project ID','Record Type','Title','Owner','Methodology ID','Methodology Revision','Stage','Execution Outcome','Work Status','Research Question','Data and Test Set','Comparison and Controls','Protocol and Configuration','Sample and Repeats','Project Data Checks','Project Evaluation Checks','Project Validity Checks','Linked Experiment IDs','Individual Contribution','Findings','Failure Cases','Limitations','Claim Outcome','Evidence URL','Code URL','Team Confirmation','Changes Since Review','Metric Data','Source Revisions','Guide Approval','Guide Feedback','Guide Reviewer','Reviewed At','First Saved At','First Submitted At','Updated At','Revision'],
  'Result Metrics':['Timestamp','Project ID','Record ID','Revision','Owner','Scenario','Metric','Unit','Direction','Baseline Name','Baseline Value','Proposed Value','Difference','Relative Improvement Percent','Uncertainty'],
  'Result History':['Timestamp','Project ID','Record ID','Revision','Event','Actor','Snapshot']
+ ,'Publication Readiness':['Record ID','Project ID','Readiness Status','Working Paper Title','Keywords','Contribution Claim','Closest Paper IDs','Novelty Comparison','Claim Boundaries','Ethics, Consent and Permissions','Data and Licence Record','Code Version URL','Environment, Seeds and Reproduction Steps','Evidence Archive URL','Author Order and Contributions','Venue Plan','Guide Approval','Novelty Check','Reproducibility Check','Guide Feedback','Guide Reviewer','Reviewed At','First Saved At','First Submitted At','Updated At','Revision']
+ ,'Paper Draft Tracker':['Record ID','Project ID','Paper Section','Work Status','Document URL','Evidence URL','Section Summary','Owner','Guide Approval','Guide Feedback','Guide Reviewer','Reviewed At','First Saved At','First Submitted At','Updated At','Revision']
 };
 function spreadsheet() {
  const id=PropertiesService.getScriptProperties().getProperty('SPREADSHEET_ID');
@@ -76,7 +78,7 @@ function authorize(r){
 }
 function ownerAllowed(id,owner){if(!records('Students').some(r=>r['Project ID']===id&&r.Role==='Student'&&r.Name===owner))throw new Error('Select a student from this team.');}
 function selectProject(name,id){return records(name).filter(r=>r['Project ID']===id);}
-function loadProject(id){return{papers:selectProject('Papers',id),reviews:selectProject('Literature Review',id),problems:selectProject('Research Problems',id),searches:selectProject('Search Log',id),gaps:selectProject('Research Gaps',id),methodologies:selectProject('Methodology',id),results:selectProject('Result Analysis',id),interactions:selectProject('Interactions',id)};}
+function loadProject(id){return{papers:selectProject('Papers',id),reviews:selectProject('Literature Review',id),problems:selectProject('Research Problems',id),searches:selectProject('Search Log',id),gaps:selectProject('Research Gaps',id),methodologies:selectProject('Methodology',id),results:selectProject('Result Analysis',id),publications:selectProject('Publication Readiness',id),drafts:selectProject('Paper Draft Tracker',id),interactions:selectProject('Interactions',id)};}
 function doGet(){return jsonResponse({ok:true,version:3,message:'My Capstone Guide API. Team access required for records.'});}
 function doPost(e){
  const lock=LockService.getScriptLock();
@@ -142,13 +144,35 @@ function saveRecord(projectId,action,p){
    contributors=teammates.join(', ');sourceDraftIds=approved.map(r=>r['Record ID']).join(', ');finalApproval='Pending';
   }
   name='Methodology';key='Record ID';row={'Record ID':p.id,'Method Scope':p.scope,'System Workflow':p.workflow,'Data and Permission Record':p.dataRecord,'Proposed Method':p.method,'Baseline Methods':p.baselines,'Evaluation Plan':p.evaluation,'Metrics and Success Criteria':p.metrics,'Experiment Protocol':p.protocol,'Reproducibility and Environment':p.reproducibility,'Contribution Claim':p.contribution,'Evidence Folder':p.evidenceFolder,'Owner':p.owner,'Guide Approval':submissionType==='Individual Draft'?'Pending':'','Submission Type':submissionType,'Team Contributors':contributors,'Source Draft IDs':sourceDraftIds,'Final Team Approval':finalApproval,'First Submitted At':existingMethod&&existingMethod['First Submitted At']||now,'Comparison Notes':submissionType==='Final Team Version'?p.comparison:'','Updated At':now};
+ }else if(action==='savePublication'){
+  if(!['In progress','Ready for guide review'].includes(p.status))throw new Error('Choose an appropriate readiness status.');
+  const publicationExisting=selectProject('Publication Readiness',projectId).find(r=>String(r['Record ID'])===String(p.id));
+  const existing=selectProject('Publication Readiness',projectId).find(r=>String(r['Record ID'])!==String(p.id));
+  if(existing)throw new Error('This team already has a publication-readiness record. Open and update that record.');
+  const ready=p.status==='Ready for guide review';
+  if(ready)requireFields(p,['title','keywords','contribution','closestPaperIds','novelty','boundaries','ethics','dataRecord','environment','evidenceUrl','authors','venuePlan']);
+  const paperIds=String(p.closestPaperIds||'').split(',').map(v=>v.trim()).filter(Boolean),papers=selectProject('Papers',projectId).filter(r=>r['Screening Status']!=='Rejected');
+  if(paperIds.length&&paperIds.some(id=>!papers.some(r=>String(r['Paper ID'])===id)))throw new Error('Use included Paper IDs from this team for the closest-paper comparison.');
+  if(ready&&paperIds.length<3)throw new Error('Compare with at least three included Paper IDs before guide review.');
+  if(p.codeUrl)requireUrl(p.codeUrl);if(p.evidenceUrl)requireUrl(p.evidenceUrl,true);
+  name='Publication Readiness';key='Record ID';row={'Record ID':p.id,'Readiness Status':p.status,'Working Paper Title':p.title||'','Keywords':p.keywords||'','Contribution Claim':p.contribution||'','Closest Paper IDs':paperIds.join(', '),'Novelty Comparison':p.novelty||'','Claim Boundaries':p.boundaries||'','Ethics, Consent and Permissions':p.ethics||'','Data and Licence Record':p.dataRecord||'','Code Version URL':p.codeUrl||'','Environment, Seeds and Reproduction Steps':p.environment||'','Evidence Archive URL':p.evidenceUrl||'','Author Order and Contributions':p.authors||'','Venue Plan':p.venuePlan||'','Guide Approval':'Pending','Novelty Check':publicationExisting&&publicationExisting['Novelty Check']||'Not checked','Reproducibility Check':publicationExisting&&publicationExisting['Reproducibility Check']||'Not checked','Guide Feedback':publicationExisting&&publicationExisting['Guide Feedback']||'','Guide Reviewer':'','Reviewed At':'','First Saved At':publicationExisting&&publicationExisting['First Saved At']||now,'First Submitted At':publicationExisting&&publicationExisting['First Submitted At']||(ready?now:''),'Updated At':now};
+ }else if(action==='saveDraft'){
+  const sections=['Title, keywords and authors','Abstract','Introduction and problem','Related work','Methodology','Results','Discussion and limitations','Conclusion and future work','Declarations and submission checklist'];
+  if(!sections.includes(p.section)||!['In progress','Ready for guide review'].includes(p.workStatus))throw new Error('Choose a paper section and work status.');
+  const draftExisting=selectProject('Paper Draft Tracker',projectId).find(r=>String(r['Record ID'])===String(p.id));
+  const existing=selectProject('Paper Draft Tracker',projectId).find(r=>String(r['Record ID'])!==String(p.id)&&r['Paper Section']===p.section);
+  if(existing)throw new Error('This paper section already has a tracker record. Open and update that record.');
+  const ready=p.workStatus==='Ready for guide review';
+  if(ready)requireFields(p,['documentUrl','summary']);
+  if(p.documentUrl)requireUrl(p.documentUrl,true);if(p.evidenceUrl)requireUrl(p.evidenceUrl);
+  name='Paper Draft Tracker';key='Record ID';row={'Record ID':p.id,'Paper Section':p.section,'Work Status':p.workStatus,'Document URL':p.documentUrl||'','Evidence URL':p.evidenceUrl||'','Section Summary':p.summary||'','Owner':p.owner,'Guide Approval':'Pending','Guide Feedback':draftExisting&&draftExisting['Guide Feedback']||'','Guide Reviewer':'','Reviewed At':'','First Saved At':draftExisting&&draftExisting['First Saved At']||now,'First Submitted At':draftExisting&&draftExisting['First Submitted At']||(ready?now:''),'Updated At':now};
  }else if(action==='addInteraction'){
   requireFields(p,['date','mode','feedback','actionItems']);if(!['Online','Offline'].includes(p.mode))throw new Error('Choose Online or Offline.');
   name='Interactions';key='Interaction ID';row={'Interaction ID':p.id,'Date':p.date,'Mode':p.mode,'Participants':records('Students').filter(r=>r['Project ID']===projectId).map(r=>r.Name).join(', '),'Feedback':p.feedback,'Action Items':p.actionItems,'Completion Status':'Pending','Recorded At':now};
  }else throw new Error('Unsupported action. Refresh the portal.');
  const previous=records(name).find(r=>String(r[key])===p.id);
  if(previous&&previous['Project ID']!==projectId)throw new Error('Record belongs to another team.');
- const revision=Number(previous&&previous.Revision||0),volatile=['Submitted At','Updated At','Recorded At','Guide Approval','Guide Feedback','Final Team Approval','First Submitted At'];
+ const revision=Number(previous&&previous.Revision||0),volatile=['Submitted At','Updated At','Recorded At','Guide Approval','Guide Feedback','Final Team Approval','First Submitted At','Novelty Check','Reproducibility Check','Guide Reviewer','Reviewed At'];
  if(previous&&Object.keys(row).filter(k=>!volatile.includes(k)).every(k=>String(previous[k]||'')===String(row[k]||'')))return previous;
  if(revision!==Number(p.revision||0))throw new Error('A teammate changed this record. Reload shared records and open the latest version. Your draft remains on this device.');
  row['Project ID']=projectId;row.Revision=revision+1;put(name,key,p.id,row);
