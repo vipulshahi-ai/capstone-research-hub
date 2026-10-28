@@ -38,6 +38,7 @@ function setupWorkbook() {
 }
 function setupResearchWorkflow() {
  Object.keys(SCHEMAS).forEach(ensureSheet);
+ setupPublicationReviewControls();
  const props=PropertiesService.getScriptProperties();
  records('Projects').forEach(project=>{
   const id=project['Project ID'];if(!id)return;
@@ -45,6 +46,20 @@ function setupResearchWorkflow() {
   if(!code){code=Utilities.getUuid().replace(/-/g,'');props.setProperty('TEAM_'+id,code);}
   put('Portal Access','Project ID',id,{'Project ID':id,'Team Access Code':code,'Instructions':'Share this code only with this team. Keep this tracker restricted to guides. Codes identify a team, not an individual.'});
  });
+}
+function setupPublicationReviewControls(){
+ const apply=(sheetName,header,choices)=>{
+  const sheet=spreadsheet().getSheetByName(sheetName);
+  if(!sheet||sheet.getMaxRows()<2)return;
+  const headers=sheet.getRange(1,1,1,sheet.getLastColumn()).getValues()[0],column=headers.indexOf(header);
+  if(column<0)return;
+  const rule=SpreadsheetApp.newDataValidation().requireValueInList(choices,true).setAllowInvalid(false).build();
+  sheet.getRange(2,column+1,sheet.getMaxRows()-1,1).setDataValidation(rule);
+ };
+ apply('Publication Readiness','Guide Approval',['Pending','Approved','Revise']);
+ apply('Publication Readiness','Novelty Check',['Not checked','Clear','Needs revision']);
+ apply('Publication Readiness','Reproducibility Check',['Not checked','Links checked','Sample reproduced','Needs revision']);
+ apply('Paper Draft Tracker','Guide Approval',['Pending','Approved','Revise']);
 }
 function records(name) {
  const s=spreadsheet().getSheetByName(name)||(SCHEMAS[name]?ensureSheet(name):null);if(!s||s.getLastRow()<2)return [];
