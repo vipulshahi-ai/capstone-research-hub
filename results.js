@@ -1,7 +1,7 @@
 /* Result-analysis workflow: evidence per student, one shared conclusion. */
 const RESULT_TYPES=['Experiment Evidence','Individual Analysis','Final Team Synthesis'];
 const resultField=(key,label,column,type='textarea',required=true,options=[])=>({key,label,column,type,required,options});
-const RESULT_DEFINITION={title:'7 · Analyse results · due 10 Nov',action:'saveResult',collection:'results',idColumn:'Record ID',help:'Start with pilot evidence. Each student records their own work and analysis; the team submits one combined conclusion. Save In progress while working, then choose Submit for guide review. A valid experiment can show no improvement.',fields:[
+const RESULT_DEFINITION={title:'8 · Analyse results',action:'saveResult',collection:'results',idColumn:'Record ID',help:'Start with pilot evidence. Each student records their own work and analysis; the team submits one combined conclusion. Complete Step 7 first. Save In progress while working, then choose Submit for guide review. A valid experiment can show no improvement.',fields:[
  resultField('recordType','What are you recording?','Record Type','select',true,RESULT_TYPES),
  resultField('title','Short title: test or finding','Title','text'),
  resultField('workStatus','Submission status','Work Status','select',true,[['In progress','In progress — save your work'],['Submitted','Submit for guide review']]),
@@ -54,7 +54,7 @@ function resultFields(data){
 }
 function resultGuidance(data={}){
  const config=RESULT_PROJECTS[team.id],final=shared.methodologies.find(r=>r['Submission Type']==='Final Team Version'&&r['Final Team Approval']==='Approved');
- return `<p class="eyebrow">RESULT ANALYSIS · 10 NOVEMBER 2026</p><h3>${esc(config.lead)}</h3><p>${final?'Approved final method available. Select it below.':'Save preparation and pilot work as In progress. The team still needs an approved Final Team Version before formal result submissions.'}</p><ol>${config.hints.map(s=>`<li>${esc(s)}</li>`).join('')}</ol><p class="helper">Suggested checkpoints: pilot by 31 Oct → main experiments by 6 Nov → analysis and corrections on 7–9 Nov → submit by 10 Nov, 11:59 pm IST. These are internal checkpoints, not extra university deadlines.</p><p class="helper">Experiment evidence → one analysis from each student → one final team synthesis. Guide approval checks the evidence; a negative result can still be good research.</p>`;
+ return `<p class="eyebrow">RESULT ANALYSIS</p><h3>${esc(config.lead)}</h3><p>${final?'Approved final method available. Select it below.':'Save preparation and pilot work as In progress. The team still needs an approved Final Team Version before formal result submissions.'}</p><ol>${config.hints.map(s=>`<li>${esc(s)}</li>`).join('')}</ol><p class="helper">First complete Step 7: keep the repository, exact checkpoint, fixed configuration and evidence folder ready before submitting result records.</p><p class="helper">Experiment evidence → one analysis from each student → one final team synthesis. Guide approval checks the evidence; a negative result can still be good research.</p>`;
 }
 function readMetrics(value){try{const list=typeof value==='string'?JSON.parse(value||'[]'):value;return Array.isArray(list)?list:[];}catch{return [];}}
 function metricChange(m){

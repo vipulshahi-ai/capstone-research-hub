@@ -6,6 +6,8 @@ const path=require('node:path');
 const data={
  'Publication Readiness':[],
  'Paper Draft Tracker':[],
+ 'Project Setup':[],
+ Methodology:[{'Record ID':'method-final','Project ID':'SoAI-424','Submission Type':'Final Team Version','Final Team Approval':'Approved'}],
  Papers:[
   {'Paper ID':'p-1','Project ID':'SoAI-424','Screening Status':'Screened'},
   {'Paper ID':'p-2','Project ID':'SoAI-424','Screening Status':'Screened'},
@@ -30,6 +32,14 @@ assert.equal(saved['Reproducibility Check'],'Not checked');
 assert.ok(saved['First Submitted At']);
 assert.throws(()=>ctx.saveRecord('SoAI-424','savePublication',{...publication,id:'duplicate-plan'}),/already has/i);
 assert.throws(()=>ctx.saveRecord('SoAI-424','savePublication',{...publication,revision:1,closestPaperIds:'p-1, p-2'}),/at least three/i);
+
+const workspace={id:'workspace-plan',owner:'Aman Kaushal',status:'Ready for guide review',methodologyId:'method-final',repositoryUrl:'https://github.com/example/repo',checkpointUrl:'https://github.com/example/repo/commit/abc123',readme:'README explains the aim, installation, run command and evidence location.',environmentFile:'requirements.txt',configuration:'config.yaml with seed 42',evidenceUrl:'https://drive.google.com/drive/folders/test',roles:'Aman: implementation; Vedant: evidence and testing.'};
+const savedWorkspace=ctx.saveRecord('SoAI-424','saveSetup',workspace);
+assert.equal(savedWorkspace['Guide Approval'],'Pending');
+assert.equal(savedWorkspace['Repository Check'],'Not checked');
+assert.ok(savedWorkspace['First Submitted At']);
+assert.throws(()=>ctx.saveRecord('SoAI-424','saveSetup',{...workspace,id:'duplicate-workspace'}),/already has/i);
+assert.throws(()=>ctx.saveRecord('SoAI-424','saveSetup',{...workspace,revision:1,checkpointUrl:'https://github.com/example/repo'}),/commit or release/i);
 
 const draft={id:'draft-intro',owner:'Vedant Kasaudhan',section:'Introduction and problem',workStatus:'Ready for guide review',documentUrl:'https://drive.google.com/document/d/test',evidenceUrl:'https://drive.google.com/drive/folders/test',summary:'Problem and contribution are linked to the approved evidence.'};
 assert.equal(ctx.saveRecord('SoAI-424','saveDraft',draft)['Paper Section'],'Introduction and problem');

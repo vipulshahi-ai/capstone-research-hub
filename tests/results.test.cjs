@@ -2,7 +2,7 @@ const assert=require('node:assert/strict');
 const fs=require('node:fs');
 const vm=require('node:vm');
 const path=require('node:path');
-const data={'Result Analysis':[],Methodology:[],Students:[{Name:'Aman Kaushal','Project ID':'SoAI-424',Role:'Student'},{Name:'Vedant Kasaudhan','Project ID':'SoAI-424',Role:'Student'}]};
+const data={'Result Analysis':[],Methodology:[],'Project Setup':[{ 'Record ID':'setup-1','Project ID':'SoAI-424','Setup Status':'Ready for guide review'}],Students:[{Name:'Aman Kaushal','Project ID':'SoAI-424',Role:'Student'},{Name:'Vedant Kasaudhan','Project ID':'SoAI-424',Role:'Student'}]};
 const history=[],metricRows=[],audit=[];
 const ctx=vm.createContext({console});
 vm.runInContext(fs.readFileSync(path.join(__dirname,'..','Code.gs'),'utf8'),ctx);

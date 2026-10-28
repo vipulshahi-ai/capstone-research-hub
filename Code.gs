@@ -12,6 +12,7 @@ const SCHEMAS = {
  'Result Analysis':['Record ID','Project ID','Record Type','Title','Owner','Methodology ID','Methodology Revision','Stage','Execution Outcome','Work Status','Research Question','Data and Test Set','Comparison and Controls','Protocol and Configuration','Sample and Repeats','Project Data Checks','Project Evaluation Checks','Project Validity Checks','Linked Experiment IDs','Individual Contribution','Findings','Failure Cases','Limitations','Claim Outcome','Evidence URL','Code URL','Team Confirmation','Changes Since Review','Metric Data','Source Revisions','Guide Approval','Guide Feedback','Guide Reviewer','Reviewed At','First Saved At','First Submitted At','Updated At','Revision'],
  'Result Metrics':['Timestamp','Project ID','Record ID','Revision','Owner','Scenario','Metric','Unit','Direction','Baseline Name','Baseline Value','Proposed Value','Difference','Relative Improvement Percent','Uncertainty'],
  'Result History':['Timestamp','Project ID','Record ID','Revision','Event','Actor','Snapshot']
+ ,'Project Setup':['Record ID','Project ID','Setup Status','Final Methodology ID','Repository URL','Setup Checkpoint URL','README and Run Instructions','Dependency / Environment File','Configuration and Fixed Seed','Evidence Archive URL','Implementation Roles','Owner','Guide Approval','Repository Check','Guide Feedback','Guide Reviewer','Reviewed At','First Saved At','First Submitted At','Updated At','Revision']
  ,'Publication Readiness':['Record ID','Project ID','Readiness Status','Working Paper Title','Keywords','Contribution Claim','Closest Paper IDs','Novelty Comparison','Claim Boundaries','Ethics, Consent and Permissions','Data and Licence Record','Code Version URL','Environment, Seeds and Reproduction Steps','Evidence Archive URL','Author Order and Contributions','Venue Plan','Guide Approval','Novelty Check','Reproducibility Check','Guide Feedback','Guide Reviewer','Reviewed At','First Saved At','First Submitted At','Updated At','Revision']
  ,'Paper Draft Tracker':['Record ID','Project ID','Paper Section','Work Status','Document URL','Evidence URL','Section Summary','Owner','Guide Approval','Guide Feedback','Guide Reviewer','Reviewed At','First Saved At','First Submitted At','Updated At','Revision']
 };
@@ -59,6 +60,8 @@ function setupPublicationReviewControls(){
  apply('Publication Readiness','Guide Approval',['Pending','Approved','Revise']);
  apply('Publication Readiness','Novelty Check',['Not checked','Clear','Needs revision']);
  apply('Publication Readiness','Reproducibility Check',['Not checked','Links checked','Sample reproduced','Needs revision']);
+ apply('Project Setup','Guide Approval',['Pending','Approved','Revise']);
+ apply('Project Setup','Repository Check',['Not checked','Links checked','Sample reproduced','Needs revision']);
  apply('Paper Draft Tracker','Guide Approval',['Pending','Approved','Revise']);
 }
 function records(name) {
@@ -93,7 +96,7 @@ function authorize(r){
 }
 function ownerAllowed(id,owner){if(!records('Students').some(r=>r['Project ID']===id&&r.Role==='Student'&&r.Name===owner))throw new Error('Select a student from this team.');}
 function selectProject(name,id){return records(name).filter(r=>r['Project ID']===id);}
-function loadProject(id){return{papers:selectProject('Papers',id),reviews:selectProject('Literature Review',id),problems:selectProject('Research Problems',id),searches:selectProject('Search Log',id),gaps:selectProject('Research Gaps',id),methodologies:selectProject('Methodology',id),results:selectProject('Result Analysis',id),publications:selectProject('Publication Readiness',id),drafts:selectProject('Paper Draft Tracker',id),interactions:selectProject('Interactions',id)};}
+function loadProject(id){return{papers:selectProject('Papers',id),reviews:selectProject('Literature Review',id),problems:selectProject('Research Problems',id),searches:selectProject('Search Log',id),gaps:selectProject('Research Gaps',id),methodologies:selectProject('Methodology',id),setups:selectProject('Project Setup',id),results:selectProject('Result Analysis',id),publications:selectProject('Publication Readiness',id),drafts:selectProject('Paper Draft Tracker',id),interactions:selectProject('Interactions',id)};}
 function doGet(){return jsonResponse({ok:true,version:3,message:'My Capstone Guide API. Team access required for records.'});}
 function doPost(e){
  const lock=LockService.getScriptLock();
@@ -159,6 +162,20 @@ function saveRecord(projectId,action,p){
    contributors=teammates.join(', ');sourceDraftIds=approved.map(r=>r['Record ID']).join(', ');finalApproval='Pending';
   }
   name='Methodology';key='Record ID';row={'Record ID':p.id,'Method Scope':p.scope,'System Workflow':p.workflow,'Data and Permission Record':p.dataRecord,'Proposed Method':p.method,'Baseline Methods':p.baselines,'Evaluation Plan':p.evaluation,'Metrics and Success Criteria':p.metrics,'Experiment Protocol':p.protocol,'Reproducibility and Environment':p.reproducibility,'Contribution Claim':p.contribution,'Evidence Folder':p.evidenceFolder,'Owner':p.owner,'Guide Approval':submissionType==='Individual Draft'?'Pending':'','Submission Type':submissionType,'Team Contributors':contributors,'Source Draft IDs':sourceDraftIds,'Final Team Approval':finalApproval,'First Submitted At':existingMethod&&existingMethod['First Submitted At']||now,'Comparison Notes':submissionType==='Final Team Version'?p.comparison:'','Updated At':now};
+ }else if(action==='saveSetup'){
+  if(!['In progress','Ready for guide review'].includes(p.status))throw new Error('Choose an appropriate setup status.');
+  const setupExisting=selectProject('Project Setup',projectId).find(r=>String(r['Record ID'])===String(p.id));
+  const existing=selectProject('Project Setup',projectId).find(r=>String(r['Record ID'])!==String(p.id));
+  if(existing)throw new Error('This team already has a reproducible-workspace record. Open and update that record.');
+  const ready=p.status==='Ready for guide review';
+  const method=selectProject('Methodology',projectId).find(r=>String(r['Record ID'])===String(p.methodologyId)&&r['Submission Type']==='Final Team Version');
+  if(p.methodologyId&&!method)throw new Error('Choose an existing Final Team Version of the methodology.');
+  if(ready&&(!method||method['Final Team Approval']!=='Approved'))throw new Error('Choose the approved Final Team Version of the methodology before guide review.');
+  if(ready)requireFields(p,['methodologyId','repositoryUrl','checkpointUrl','readme','environmentFile','configuration','evidenceUrl','roles']);
+  if(p.repositoryUrl){requireUrl(p.repositoryUrl);if(!p.repositoryUrl.startsWith('https://github.com/'))throw new Error('Use the team GitHub repository link.');}
+  if(p.checkpointUrl){requireUrl(p.checkpointUrl);if(!p.checkpointUrl.startsWith('https://github.com/')||!/\/commit\/|\/releases\/tag\//.test(p.checkpointUrl))throw new Error('Use the exact GitHub commit or release URL for this checkpoint.');}
+  if(p.evidenceUrl)requireUrl(p.evidenceUrl,true);
+  name='Project Setup';key='Record ID';row={'Record ID':p.id,'Setup Status':p.status,'Final Methodology ID':p.methodologyId||'','Repository URL':p.repositoryUrl||'','Setup Checkpoint URL':p.checkpointUrl||'','README and Run Instructions':p.readme||'','Dependency / Environment File':p.environmentFile||'','Configuration and Fixed Seed':p.configuration||'','Evidence Archive URL':p.evidenceUrl||'','Implementation Roles':p.roles||'','Owner':p.owner,'Guide Approval':'Pending','Repository Check':setupExisting&&setupExisting['Repository Check']||'Not checked','Guide Feedback':setupExisting&&setupExisting['Guide Feedback']||'','Guide Reviewer':'','Reviewed At':'','First Saved At':setupExisting&&setupExisting['First Saved At']||now,'First Submitted At':setupExisting&&setupExisting['First Submitted At']||(ready?now:''),'Updated At':now};
  }else if(action==='savePublication'){
   if(!['In progress','Ready for guide review'].includes(p.status))throw new Error('Choose an appropriate readiness status.');
   const publicationExisting=selectProject('Publication Readiness',projectId).find(r=>String(r['Record ID'])===String(p.id));
@@ -187,7 +204,7 @@ function saveRecord(projectId,action,p){
  }else throw new Error('Unsupported action. Refresh the portal.');
  const previous=records(name).find(r=>String(r[key])===p.id);
  if(previous&&previous['Project ID']!==projectId)throw new Error('Record belongs to another team.');
- const revision=Number(previous&&previous.Revision||0),volatile=['Submitted At','Updated At','Recorded At','Guide Approval','Guide Feedback','Final Team Approval','First Submitted At','Novelty Check','Reproducibility Check','Guide Reviewer','Reviewed At'];
+ const revision=Number(previous&&previous.Revision||0),volatile=['Submitted At','Updated At','Recorded At','Guide Approval','Guide Feedback','Final Team Approval','First Submitted At','Novelty Check','Reproducibility Check','Repository Check','Guide Reviewer','Reviewed At'];
  if(previous&&Object.keys(row).filter(k=>!volatile.includes(k)).every(k=>String(previous[k]||'')===String(row[k]||'')))return previous;
  if(revision!==Number(p.revision||0))throw new Error('A teammate changed this record. Reload shared records and open the latest version. Your draft remains on this device.');
  row['Project ID']=projectId;row.Revision=revision+1;put(name,key,p.id,row);
@@ -253,6 +270,8 @@ function saveResultRecord(projectId,p){
  const method=selectProject('Methodology',projectId).find(r=>r['Record ID']===p.methodologyId&&r['Submission Type']==='Final Team Version');
  if(p.methodologyId&&!method)throw new Error('Choose a final methodology from this team.');
  if(submitted&&(!method||method['Final Team Approval']!=='Approved'))throw new Error('An approved Final Team Version of the methodology is required. Save In progress until it is approved.');
+ const setup=selectProject('Project Setup',projectId)[0];
+ if(submitted&&(!setup||setup['Setup Status']!=='Ready for guide review'))throw new Error('Complete Step 7 and mark the reproducible workspace Ready for guide review before submitting result analysis.');
  if(p.evidenceUrl)requireUrl(p.evidenceUrl);if(p.codeUrl)requireUrl(p.codeUrl);
  const metrics=experiment?validatedResultMetrics(p.metrics,submitted):[],linkedIds=String(p.linkedIds||'').split(',').map(x=>x.trim()).filter(Boolean),sources={};
  if(method)sources[method['Record ID']]=method.Revision;
