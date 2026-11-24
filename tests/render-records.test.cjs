@@ -55,6 +55,30 @@ console.log('Expandable record views passed for all three teams.');
 
 {
   const { context, element } = loadPortal();
+  const original = { documentUrl: 'https://docs.google.com/document/d/team-manuscript-123/edit?usp=sharing', summary: 'Current draft' };
+  const payload = context.manuscriptPayload('saveDraft', original);
+  assert.equal(payload.documentUrl, 'https://drive.google.com/file/d/team-manuscript-123/view');
+  assert.equal(original.documentUrl, 'https://docs.google.com/document/d/team-manuscript-123/edit?usp=sharing', 'Keep the student draft link unchanged');
+  assert.equal(context.manuscriptPayload('saveSetup', original), original, 'Do not change links in other forms');
+  assert.equal(context.manuscriptPayload('saveDraft', { documentUrl: 'https://docs.google.com/document/u/1/d/team-manuscript-123/edit' }).documentUrl, payload.documentUrl);
+
+  const backend = vm.createContext({});
+  vm.runInContext(fs.readFileSync(path.join(__dirname, '..', 'Code.gs'), 'utf8'), backend);
+  assert.doesNotThrow(() => backend.requireUrl(payload.documentUrl, true), 'The existing deployed save handler accepts the shared Google Doc resource');
+  for (const link of ['https://docs.google.com.evil.example/document/d/id/edit', 'http://docs.google.com/document/d/id/edit', 'https://example.com/document/d/id/edit']) {
+    assert.throws(() => backend.requireUrl(context.manuscriptPayload('saveDraft', { documentUrl: link }).documentUrl, true));
+  }
+
+  context.manuscriptUrl = payload.documentUrl;
+  vm.runInContext("shared.drafts = [{'Document URL': manuscriptUrl}]; renderForm('draft', {id:'next-section', section:'Related work', owner:'Aman Kaushal'});", context);
+  assert.match(element('#research-form').innerHTML, /Shared team manuscript link/);
+  assert.match(element('#research-form').innerHTML, /team-manuscript-123\/view/, 'Reuse the team document for a new section');
+  assert.match(element('#methodology-guidance').innerHTML, /IEEE journal templates/);
+  assert.match(element('#methodology-guidance').innerHTML, /Science Citation Index Expanded/);
+}
+
+{
+  const { context, element } = loadPortal();
   context.testData = {
     problems: [], searches: [], papers: [], reviews: [], gaps: [], interactions: [],
     methodologies: [
